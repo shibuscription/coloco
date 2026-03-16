@@ -1,0 +1,14 @@
+export const CHROMA_SCALE = 0.42;
+export const VERTICAL_SCALE = 0.52;
+export const POINT_RADIUS = 0.14;
+export const SELECTED_SCALE = 1.45;
+export const HIGHLIGHT_SCALE = 1.15;
+export const DIMMED_OPACITY = 0.2;
+export const DEFAULT_OPACITY = 0.96;
+export const AUTO_ROTATE_SPEED = 0.65;
+export const AUTO_ROTATE_RESUME_DELAY_MS = 1800;
+export const MIN_POLAR_ANGLE = 0.01;
+export const MAX_POLAR_ANGLE = Math.PI - 0.01;
+export const MIN_DISTANCE = 5.2;
+export const MAX_DISTANCE = 14;
+export const INITIAL_CAMERA_POSITION: [number, number, number] = [7.5, 5.5, 7.5];

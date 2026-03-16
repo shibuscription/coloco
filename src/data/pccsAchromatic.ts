@@ -1,0 +1,67 @@
+import type { AchromaticPccsPoint } from "./types";
+
+// 出典:
+// https://spark-a.com/design/ct-achromatic-color/
+// Phase 1 では代表的な 5 色 W / ltGy / mGy / dkGy / Bk のみ採用する。
+export const pccsAchromatic: AchromaticPccsPoint[] = [
+  {
+    id: "achromatic-W",
+    kind: "achromatic",
+    toneCode: "W",
+    toneNameJa: "白",
+    pccsNotation: "n-9.5",
+    pccsLightness: 9.5,
+    pccsSaturation: 0,
+    munsellNotation: "N 9.5",
+    hex: "#FFFFFF",
+    rgb: { r: 255, g: 255, b: 255 },
+  },
+  {
+    id: "achromatic-ltGy",
+    kind: "achromatic",
+    toneCode: "ltGy",
+    toneNameJa: "明るい灰色",
+    pccsNotation: "ltGy-8.5",
+    pccsLightness: 8.5,
+    pccsSaturation: 0,
+    munsellNotation: "N 8.5",
+    hex: "#D6D6D6",
+    rgb: { r: 214, g: 214, b: 214 },
+  },
+  {
+    id: "achromatic-mGy",
+    kind: "achromatic",
+    toneCode: "mGy",
+    toneNameJa: "灰色",
+    pccsNotation: "mGy-6.5",
+    pccsLightness: 6.5,
+    pccsSaturation: 0,
+    munsellNotation: "N 6.5",
+    hex: "#A1A1A1",
+    rgb: { r: 161, g: 161, b: 161 },
+  },
+  {
+    id: "achromatic-dkGy",
+    kind: "achromatic",
+    toneCode: "dkGy",
+    toneNameJa: "暗い灰色",
+    pccsNotation: "dkGy-3.5",
+    pccsLightness: 3.5,
+    pccsSaturation: 0,
+    munsellNotation: "N 3.5",
+    hex: "#545454",
+    rgb: { r: 84, g: 84, b: 84 },
+  },
+  {
+    id: "achromatic-Bk",
+    kind: "achromatic",
+    toneCode: "Bk",
+    toneNameJa: "黒",
+    pccsNotation: "Bk-1.5",
+    pccsLightness: 1.5,
+    pccsSaturation: 0,
+    munsellNotation: "N 1.5",
+    hex: "#000000",
+    rgb: { r: 0, g: 0, b: 0 },
+  },
+];
