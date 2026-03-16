@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { pccsAchromatic, pccsPoints, pccsRepresentativeHues12 } from "./data";
 import { ColorInfoPanel } from "./components/ColorInfoPanel";
 import { ColocoScene } from "./components/ColocoScene";
@@ -19,77 +19,101 @@ const toneOptions = [
   { value: "ltg", label: "ltg" },
   { value: "g", label: "g" },
   { value: "dkg", label: "dkg" },
+  { value: "achromatic", label: "無彩色" },
 ] as const;
+
+const INITIAL_HIGHLIGHT: HighlightState = {
+  toneValue: "",
+  hueValue: "",
+};
 
 export default function App() {
   const points = useMemo(() => createRenderablePoints(pccsPoints, pccsAchromatic), []);
-  const [selectedId, setSelectedId] = useState<string>(points[0]?.id ?? "");
-  const [highlight, setHighlight] = useState<HighlightState>({ type: "none" });
-  const [isMobileHighlightOpen, setIsMobileHighlightOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<HighlightState>(INITIAL_HIGHLIGHT);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
   const toneSelectOptions = toneOptions.map((tone) => ({
     ...tone,
-    label: `${tone.label} トーン`,
+    label: `${tone.label}${tone.value === "achromatic" ? "" : " トーン"}`,
   }));
   const hueSelectOptions = pccsRepresentativeHues12.map((hue) => ({
     value: hue.hueCode24,
     label: `${hue.hueCode24} (${hue.hueNameJa})`,
   }));
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <div className="app-shell">
       <main className="app-main">
-        <section className="viewer-stack">
+        <section className="viewer-stage">
           <div className="viewer-card">
             <ColocoScene
               points={points}
               highlight={highlight}
               selectedId={selectedId}
               onSelectPoint={setSelectedId}
+              onClearSelection={() => setSelectedId(null)}
             />
+          </div>
+
+          <button
+            type="button"
+            className={`menu-toggle ${isSettingsOpen ? "is-open" : ""}`}
+            aria-label="設定を開く"
+            aria-expanded={isSettingsOpen}
+            onClick={() => setIsSettingsOpen((open) => !open)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+
+          <div
+            className={`settings-backdrop ${isSettingsOpen ? "is-open" : ""}`}
+            onClick={() => setIsSettingsOpen(false)}
+          />
+
+          <section
+            className={`settings-overlay ${isSettingsOpen ? "is-open" : ""}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <HighlightControls
+              toneValue={highlight.toneValue}
+              hueValue={highlight.hueValue}
+              onToneChange={(value) =>
+                setHighlight({
+                  toneValue: value,
+                  hueValue: value ? "" : highlight.hueValue,
+                })
+              }
+              onHueChange={(value) =>
+                setHighlight({
+                  toneValue: value ? "" : highlight.toneValue,
+                  hueValue: value,
+                })
+              }
+              toneOptions={toneSelectOptions}
+              hueOptions={hueSelectOptions}
+            />
+          </section>
+
+          <div className={`info-overlay ${selectedPoint ? "is-visible" : ""}`}>
+            <ColorInfoPanel selectedPoint={selectedPoint} />
           </div>
         </section>
-
-        <aside className="sidebar">
-          <div className="desktop-only">
-            <HighlightControls
-              highlight={highlight}
-              onChange={setHighlight}
-              toneOptions={toneSelectOptions}
-              hueOptions={hueSelectOptions}
-            />
-          </div>
-          <ColorInfoPanel selectedPoint={selectedPoint} />
-        </aside>
       </main>
-
-      <button
-        type="button"
-        className="mobile-highlight-toggle mobile-only"
-        onClick={() => setIsMobileHighlightOpen(true)}
-      >
-        設定
-      </button>
-
-      {isMobileHighlightOpen ? (
-        <div className="mobile-sheet-backdrop mobile-only" onClick={() => setIsMobileHighlightOpen(false)}>
-          <div className="mobile-sheet" onClick={(event) => event.stopPropagation()}>
-            <div className="mobile-sheet-header">
-              <button type="button" className="sheet-close" onClick={() => setIsMobileHighlightOpen(false)}>
-                閉じる
-              </button>
-            </div>
-            <HighlightControls
-              bare
-              highlight={highlight}
-              onChange={setHighlight}
-              toneOptions={toneSelectOptions}
-              hueOptions={hueSelectOptions}
-            />
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

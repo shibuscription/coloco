@@ -5,7 +5,7 @@ import type { PccsRenderablePoint } from "../utils/pccs3d";
 
 type ColorCloudProps = {
   points: PccsRenderablePoint[];
-  selectedId: string;
+  selectedId: string | null;
   highlight: HighlightState;
   onSelectPoint: (id: string) => void;
 };

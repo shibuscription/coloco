@@ -12,7 +12,7 @@ const ringPoints = Array.from({ length: 65 }, (_, index) => {
 
 export function SceneGuides() {
   return (
-    <group>
+    <group raycast={() => null}>
       <Line points={[[0, 0, 0], [0, 5.4, 0]]} color="#3b2d1f" lineWidth={1.2} />
       <Line points={[[0, 0.78, 0], [0, 1.82, 0]]} color="#6f6253" lineWidth={1} dashed dashSize={0.09} gapSize={0.06} />
       <Line points={ringPoints} color="#a89780" lineWidth={0.7} />

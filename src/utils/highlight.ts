@@ -1,28 +1,47 @@
 import type { PccsRenderablePoint } from "./pccs3d";
 
-export type HighlightState =
-  | { type: "none" }
-  | { type: "tone"; value: string }
-  | { type: "hue"; value: string }
-  | { type: "achromatic" };
+export type HighlightState = {
+  toneValue: string;
+  hueValue: string;
+};
+
+const isToneMatch = (point: PccsRenderablePoint, toneValue: string): boolean => {
+  if (!toneValue) {
+    return false;
+  }
+
+  if (toneValue === "achromatic") {
+    return point.kind === "achromatic";
+  }
+
+  return point.kind === "chromatic" && point.toneCode === toneValue;
+};
+
+const isHueMatch = (point: PccsRenderablePoint, hueValue: string): boolean => {
+  if (!hueValue) {
+    return false;
+  }
+
+  if (point.kind === "achromatic") {
+    return true;
+  }
+
+  return point.hueCode24 === hueValue;
+};
+
+export const hasActiveHighlight = (highlight: HighlightState): boolean =>
+  Boolean(highlight.toneValue || highlight.hueValue);
 
 export const isPointHighlighted = (point: PccsRenderablePoint, highlight: HighlightState): boolean => {
-  switch (highlight.type) {
-    case "none":
-      return true;
-    case "tone":
-      return point.kind === "chromatic" && point.toneCode === highlight.value;
-    case "hue":
-      return point.kind === "chromatic" && point.hueCode24 === highlight.value;
-    case "achromatic":
-      return point.kind === "achromatic";
-    default:
-      return true;
+  if (!hasActiveHighlight(highlight)) {
+    return true;
   }
+
+  return isToneMatch(point, highlight.toneValue) || isHueMatch(point, highlight.hueValue);
 };
 
 export const shouldDimPoint = (point: PccsRenderablePoint, highlight: HighlightState): boolean => {
-  if (highlight.type === "none") {
+  if (!hasActiveHighlight(highlight)) {
     return false;
   }
 

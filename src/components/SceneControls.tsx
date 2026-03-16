@@ -5,12 +5,17 @@ import {
   AUTO_ROTATE_RESUME_DELAY_MS,
   AUTO_ROTATE_SPEED,
   MAX_DISTANCE,
+  MOBILE_MAX_DISTANCE,
   MAX_POLAR_ANGLE,
   MIN_DISTANCE,
   MIN_POLAR_ANGLE,
 } from "../constants/viewConfig";
 
-export function SceneControls() {
+type SceneControlsProps = {
+  isMobileView: boolean;
+};
+
+export function SceneControls({ isMobileView }: SceneControlsProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -55,7 +60,7 @@ export function SceneControls() {
       minPolarAngle={MIN_POLAR_ANGLE}
       maxPolarAngle={MAX_POLAR_ANGLE}
       minDistance={MIN_DISTANCE}
-      maxDistance={MAX_DISTANCE}
+      maxDistance={isMobileView ? MOBILE_MAX_DISTANCE : MAX_DISTANCE}
       autoRotate={autoRotate}
       autoRotateSpeed={AUTO_ROTATE_SPEED}
     />

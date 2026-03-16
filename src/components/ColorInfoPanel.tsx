@@ -16,15 +16,11 @@ const getContrastTextColor = (hex: string): string => {
 
 export function ColorInfoPanel({ selectedPoint }: ColorInfoPanelProps) {
   if (!selectedPoint) {
-    return (
-      <section className="panel info-panel">
-        <p className="empty-state">点を選択すると色見本と基本情報を表示します。</p>
-      </section>
-    );
+    return null;
   }
 
   return (
-    <section className="panel info-panel">
+    <section className="panel info-panel info-overlay-card">
       <div
         className="color-chip color-chip-large"
         style={{
