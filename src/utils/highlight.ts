@@ -3,6 +3,7 @@ import type { PccsRenderablePoint } from "./pccs3d";
 export type HighlightState = {
   toneValue: string;
   hueValue: string;
+  imageIds: string[];
 };
 
 const isToneMatch = (point: PccsRenderablePoint, toneValue: string): boolean => {
@@ -30,14 +31,18 @@ const isHueMatch = (point: PccsRenderablePoint, hueValue: string): boolean => {
 };
 
 export const hasActiveHighlight = (highlight: HighlightState): boolean =>
-  Boolean(highlight.toneValue || highlight.hueValue);
+  Boolean(highlight.toneValue || highlight.hueValue || highlight.imageIds.length > 0);
 
 export const isPointHighlighted = (point: PccsRenderablePoint, highlight: HighlightState): boolean => {
   if (!hasActiveHighlight(highlight)) {
     return true;
   }
 
-  return isToneMatch(point, highlight.toneValue) || isHueMatch(point, highlight.hueValue);
+  return (
+    isToneMatch(point, highlight.toneValue) ||
+    isHueMatch(point, highlight.hueValue) ||
+    highlight.imageIds.includes(point.id)
+  );
 };
 
 export const shouldDimPoint = (point: PccsRenderablePoint, highlight: HighlightState): boolean => {

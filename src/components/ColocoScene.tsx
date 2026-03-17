@@ -55,7 +55,6 @@ export function ColocoScene({
       onPointerMissed={onClearSelection}
     >
       <color attach="background" args={["#bfc3c9"]} />
-      <fog attach="fog" args={["#bfc3c9", 10, 22]} />
       <ambientLight intensity={1.15} />
       <directionalLight position={[5, 8, 6]} intensity={1.1} />
       <directionalLight position={[-4, 5, -5]} intensity={0.55} />
