@@ -14,7 +14,8 @@ type ImageAnalysisPanelProps = {
   onPickImage: (file: File) => void;
   onClearImage: () => void;
   onToggleCluster: (pccsId: string) => void;
-  onClearAll: () => void;
+  onSetClustersSelected: (pccsIds: string[], selected: boolean) => void;
+  onSetAllSelected: (selected: boolean) => void;
   onFocusPanel: () => void;
   onInspectCluster: (pccsId: string) => void;
 };
@@ -26,6 +27,11 @@ const MAX_SCALE = 4;
 const ZOOM_STEP = 0.18;
 const TAP_MOVE_THRESHOLD = 6;
 const DOUBLE_CLICK_DELAY_MS = 220;
+const LONG_PRESS_DELAY_MS = 360;
+const LONG_PRESS_CANCEL_MOVE_THRESHOLD = 10;
+const AUTO_SCROLL_TOP_EDGE_THRESHOLD = 44;
+const AUTO_SCROLL_BOTTOM_EDGE_THRESHOLD = 88;
+const AUTO_SCROLL_STEP_PX = 9;
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
@@ -62,14 +68,27 @@ export function ImageAnalysisPanel({
   onPickImage,
   onClearImage,
   onToggleCluster,
-  onClearAll,
+  onSetClustersSelected,
+  onSetAllSelected,
   onFocusPanel,
   onInspectCluster,
 }: ImageAnalysisPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const tilesScrollRef = useRef<HTMLDivElement>(null);
   const tileRefs = useRef(new Map<string, HTMLButtonElement>());
   const clickTimerRef = useRef<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const suppressClickRef = useRef(false);
+  const pendingTilePressRef = useRef<{ pointerId: number; pccsId: string; startPoint: Point } | null>(null);
+  const dragSelectionRef = useRef<{
+    pointerId: number;
+    selected: boolean;
+    processedIds: Set<string>;
+    lastClientX: number;
+    lastClientY: number;
+  } | null>(null);
   const pointersRef = useRef<Map<number, Point>>(new Map());
   const dragRef = useRef<{ pointerId: number; startPointer: Point; startPan: Point; moved: boolean } | null>(null);
   const pinchRef = useRef<{ startDistance: number; startScale: number; startPan: Point; startCenter: Point } | null>(null);
@@ -81,8 +100,10 @@ export function ImageAnalysisPanel({
   const [isMobileView, setIsMobileView] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 980px)").matches : false,
   );
+  const [isBulkSelecting, setIsBulkSelecting] = useState(false);
 
   const clusters = analysis?.clusters ?? [];
+  const areAllClustersSelected = clusters.length > 0 && clusters.every((cluster) => cluster.selected);
   const selectedClusters = useMemo(() => clusters.filter((cluster) => cluster.selected), [clusters]);
   const selectedRatioTotal = useMemo(
     () => selectedClusters.reduce((total, cluster) => total + cluster.ratio, 0),
@@ -135,6 +156,12 @@ export function ImageAnalysisPanel({
       if (clickTimerRef.current !== null) {
         window.clearTimeout(clickTimerRef.current);
       }
+      if (longPressTimerRef.current !== null) {
+        window.clearTimeout(longPressTimerRef.current);
+      }
+      if (autoScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(autoScrollFrameRef.current);
+      }
     };
   }, []);
 
@@ -150,6 +177,29 @@ export function ImageAnalysisPanel({
       behavior: "smooth",
     });
   }, [referencedPccsId]);
+
+  useEffect(() => {
+    const tilesScrollElement = tilesScrollRef.current;
+    if (!tilesScrollElement) {
+      return;
+    }
+
+    const preventTouchScrollDuringBulkSelection = (event: TouchEvent) => {
+      if (!dragSelectionRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+    };
+
+    tilesScrollElement.addEventListener("touchmove", preventTouchScrollDuringBulkSelection, {
+      passive: false,
+    });
+
+    return () => {
+      tilesScrollElement.removeEventListener("touchmove", preventTouchScrollDuringBulkSelection);
+    };
+  }, []);
 
   const metrics = useMemo(() => {
     if (!analysis || viewportSize.width === 0 || viewportSize.height === 0) {
@@ -256,6 +306,109 @@ export function ImageAnalysisPanel({
   const openFilePicker = () => {
     onFocusPanel();
     inputRef.current?.click();
+  };
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const stopAutoScroll = () => {
+    if (autoScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(autoScrollFrameRef.current);
+      autoScrollFrameRef.current = null;
+    }
+  };
+
+  const endBulkSelection = () => {
+    clearLongPressTimer();
+    stopAutoScroll();
+    pendingTilePressRef.current = null;
+    dragSelectionRef.current = null;
+    setIsBulkSelecting(false);
+  };
+
+  const applyBulkSelectionToTile = (pccsId: string | null) => {
+    const dragSelection = dragSelectionRef.current;
+    if (!dragSelection || !pccsId || dragSelection.processedIds.has(pccsId)) {
+      return;
+    }
+
+    dragSelection.processedIds.add(pccsId);
+    onSetClustersSelected([pccsId], dragSelection.selected);
+  };
+
+  const getTileIdFromPoint = (clientX: number, clientY: number): string | null => {
+    const target = document.elementFromPoint(clientX, clientY);
+    if (!(target instanceof HTMLElement)) {
+      return null;
+    }
+
+    const tileElement = target.closest<HTMLButtonElement>(".analysis-tile");
+    return tileElement?.dataset.pccsId ?? null;
+  };
+
+  const runAutoScroll = () => {
+    const tilesScrollElement = tilesScrollRef.current;
+    const dragSelection = dragSelectionRef.current;
+
+    if (!tilesScrollElement || !dragSelection) {
+      autoScrollFrameRef.current = null;
+      return;
+    }
+
+    applyBulkSelectionToTile(getTileIdFromPoint(dragSelection.lastClientX, dragSelection.lastClientY));
+
+    const rect = tilesScrollElement.getBoundingClientRect();
+    let scrollDelta = 0;
+    const bottomEdgeThreshold = isMobileView ? AUTO_SCROLL_BOTTOM_EDGE_THRESHOLD : AUTO_SCROLL_TOP_EDGE_THRESHOLD;
+
+    if (dragSelection.lastClientY > rect.bottom - bottomEdgeThreshold) {
+      scrollDelta = AUTO_SCROLL_STEP_PX;
+    } else if (dragSelection.lastClientY < rect.top + AUTO_SCROLL_TOP_EDGE_THRESHOLD) {
+      scrollDelta = -AUTO_SCROLL_STEP_PX;
+    }
+
+    if (scrollDelta !== 0) {
+      const previousScrollTop = tilesScrollElement.scrollTop;
+      tilesScrollElement.scrollTop += scrollDelta;
+      applyBulkSelectionToTile(getTileIdFromPoint(dragSelection.lastClientX, dragSelection.lastClientY));
+
+      if (tilesScrollElement.scrollTop !== previousScrollTop) {
+        autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
+        return;
+      }
+    }
+
+    autoScrollFrameRef.current = null;
+  };
+
+  const ensureAutoScroll = () => {
+    if (autoScrollFrameRef.current === null) {
+      autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
+    }
+  };
+
+  const beginBulkSelection = (pointerId: number, pccsId: string, clientX: number, clientY: number) => {
+    const initialCluster = clusters.find((cluster) => cluster.pccsId === pccsId);
+    if (!initialCluster) {
+      return;
+    }
+
+    const nextSelectedState = !initialCluster.selected;
+    suppressClickRef.current = true;
+    dragSelectionRef.current = {
+      pointerId,
+      selected: nextSelectedState,
+      processedIds: new Set(),
+      lastClientX: clientX,
+      lastClientY: clientY,
+    };
+    setIsBulkSelecting(true);
+    applyBulkSelectionToTile(pccsId);
+    ensureAutoScroll();
   };
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -400,6 +553,12 @@ export function ImageAnalysisPanel({
     event.stopPropagation();
     onFocusPanel();
 
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      event.preventDefault();
+      return;
+    }
+
     if (isMobileView) {
       onToggleCluster(pccsId);
       return;
@@ -418,6 +577,87 @@ export function ImageAnalysisPanel({
       onToggleCluster(pccsId);
       clickTimerRef.current = null;
     }, DOUBLE_CLICK_DELAY_MS);
+  };
+
+  const handleTilePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, pccsId: string) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    clearLongPressTimer();
+    endBulkSelection();
+    onFocusPanel();
+
+    const startPoint = { x: event.clientX, y: event.clientY };
+    pendingTilePressRef.current = {
+      pointerId: event.pointerId,
+      pccsId,
+      startPoint,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    longPressTimerRef.current = window.setTimeout(() => {
+      beginBulkSelection(event.pointerId, pccsId, startPoint.x, startPoint.y);
+      clearLongPressTimer();
+    }, LONG_PRESS_DELAY_MS);
+  };
+
+  const handleTilePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    const dragSelection = dragSelectionRef.current;
+    if (dragSelection?.pointerId === event.pointerId) {
+      event.preventDefault();
+      event.stopPropagation();
+      dragSelection.lastClientX = event.clientX;
+      dragSelection.lastClientY = event.clientY;
+      applyBulkSelectionToTile(getTileIdFromPoint(event.clientX, event.clientY));
+      ensureAutoScroll();
+      return;
+    }
+
+    const pendingPress = pendingTilePressRef.current;
+    if (!pendingPress || pendingPress.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const moveDistance = getDistance(pendingPress.startPoint, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+    if (moveDistance > LONG_PRESS_CANCEL_MOVE_THRESHOLD) {
+      clearLongPressTimer();
+      pendingTilePressRef.current = null;
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handleTilePointerEnd = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const wasBulkSelecting = dragSelectionRef.current?.pointerId === event.pointerId;
+    const wasPendingPress = pendingTilePressRef.current?.pointerId === event.pointerId;
+
+    if (wasBulkSelecting) {
+      event.preventDefault();
+      event.stopPropagation();
+      endBulkSelection();
+      return;
+    }
+
+    if (wasPendingPress) {
+      clearLongPressTimer();
+      pendingTilePressRef.current = null;
+    }
   };
 
   return (
@@ -500,15 +740,15 @@ export function ImageAnalysisPanel({
               <button
                 type="button"
                 className="secondary-button secondary-button-small analysis-action-button"
-                onClick={onClearAll}
+                onClick={() => onSetAllSelected(!areAllClustersSelected)}
                 disabled={clusters.length === 0}
-                title="全選択解除"
-                aria-label="全選択解除"
+                title={areAllClustersSelected ? "全解除" : "全選択"}
+                aria-label={areAllClustersSelected ? "全解除" : "全選択"}
               >
                 <span className="analysis-action-icon" aria-hidden="true">
-                  ⟲
+                  {areAllClustersSelected ? "☐" : "☑"}
                 </span>
-                <span className="analysis-action-label">全選択解除</span>
+                <span className="analysis-action-label">{areAllClustersSelected ? "全解除" : "全選択"}</span>
               </button>
               <input
                 ref={inputRef}
@@ -538,7 +778,7 @@ export function ImageAnalysisPanel({
           </div>
         </div>
 
-        <div className="analysis-tiles-scroll">
+        <div className={`analysis-tiles-scroll ${isBulkSelecting ? "is-bulk-selecting" : ""}`} ref={tilesScrollRef}>
           {clusters.length > 0 ? (
             <div className="analysis-grid">
               {clusters.map((cluster) => (
@@ -555,11 +795,17 @@ export function ImageAnalysisPanel({
                   className={`analysis-tile ${cluster.selected ? "is-selected" : ""} ${
                     referencedPccsId === cluster.pccsId ? "is-referenced" : ""
                   }`}
+                  data-pccs-id={cluster.pccsId}
                   style={{
                     background: cluster.hex,
                     color: getContrastTextColor(cluster.hex),
                   }}
                   onClick={(event) => handleTileClick(event, cluster.pccsId)}
+                  onContextMenu={(event) => event.preventDefault()}
+                  onPointerDown={(event) => handleTilePointerDown(event, cluster.pccsId)}
+                  onPointerMove={handleTilePointerMove}
+                  onPointerUp={handleTilePointerEnd}
+                  onPointerCancel={handleTilePointerEnd}
                 >
                   <span className="analysis-tile-text">
                     <strong>{cluster.pccsShortLabel}</strong>

@@ -141,6 +141,59 @@ export default function App() {
     }));
   };
 
+  const setAllAnalysisClustersSelected = (selected: boolean) => {
+    setAnalysis((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextClusters = current.clusters.map((cluster) => ({
+        ...cluster,
+        selected,
+      }));
+
+      setHighlight({
+        toneValue: "",
+        hueValue: "",
+        imageIds: selected ? nextClusters.map((cluster) => cluster.pccsId) : [],
+      });
+
+      return {
+        ...current,
+        clusters: nextClusters,
+      };
+    });
+  };
+
+  const setAnalysisClustersSelected = (pccsIds: string[], selected: boolean) => {
+    if (pccsIds.length === 0) {
+      return;
+    }
+
+    const idSet = new Set(pccsIds);
+
+    setAnalysis((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextClusters = current.clusters.map((cluster) =>
+        idSet.has(cluster.pccsId) ? { ...cluster, selected } : cluster,
+      );
+
+      setHighlight({
+        toneValue: "",
+        hueValue: "",
+        imageIds: nextClusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId),
+      });
+
+      return {
+        ...current,
+        clusters: nextClusters,
+      };
+    });
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -391,13 +444,14 @@ export default function App() {
                       };
                     })
                   }
+                  onSetClustersSelected={setAnalysisClustersSelected}
                   onClearImage={() => {
                     setActiveOverlay("image");
                     clearLoadedImage();
                   }}
-                  onClearAll={() => {
+                  onSetAllSelected={(selected) => {
                     setActiveOverlay("image");
-                    clearImageHighlight();
+                    setAllAnalysisClustersSelected(selected);
                   }}
                   onInspectCluster={selectAnalysisColorDetail}
                 />

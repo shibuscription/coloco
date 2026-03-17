@@ -636,6 +636,13 @@ select {
   padding-right: 4px;
 }
 
+.analysis-tiles-scroll.is-bulk-selecting {
+  touch-action: none;
+  overscroll-behavior: contain;
+  box-shadow: inset 0 0 0 1px rgba(188, 133, 64, 0.26);
+  border-radius: 14px;
+}
+
 .analysis-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
