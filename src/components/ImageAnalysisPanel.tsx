@@ -237,6 +237,7 @@ export function ImageAnalysisPanel({
       x: referenced.normalizedX,
       y: referenced.normalizedY,
     });
+    onInspectCluster(referenced.pccsId);
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {

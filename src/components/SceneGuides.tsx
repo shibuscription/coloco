@@ -27,11 +27,13 @@ export function SceneGuides() {
         const theta = (hue.angleDeg * Math.PI) / 180;
         const x = Math.cos(theta) * (hueGuideRadius + 0.6);
         const z = Math.sin(theta) * (hueGuideRadius + 0.6);
+        const outwardRotationY = Math.PI / 2 - theta;
 
         return (
           <Text
             key={hue.hueIndex24}
             position={[x, 0.2, z]}
+            rotation={[0, outwardRotationY, 0]}
             fontSize={0.32}
             color="#5a4c3b"
             anchorX="center"

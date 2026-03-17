@@ -72,6 +72,91 @@ const getResizedDimensions = (
   };
 };
 
+const getImageDataFromImage = (image: HTMLImageElement): ImageData => {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+
+  if (!context) {
+    throw new Error("解析用の元画像 ImageData を取得できませんでした。");
+  }
+
+  context.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight);
+  return context.getImageData(0, 0, image.naturalWidth, image.naturalHeight);
+};
+
+export const resizeImageForAnalysisByMajority = (
+  sourceImageData: ImageData,
+  targetWidth: number,
+  targetHeight: number,
+  alphaThreshold: number,
+): Uint8ClampedArray => {
+  const { data: sourceData, width: sourceWidth, height: sourceHeight } = sourceImageData;
+
+  if (sourceWidth === targetWidth && sourceHeight === targetHeight) {
+    return sourceData;
+  }
+
+  const resizedData = new Uint8ClampedArray(targetWidth * targetHeight * 4);
+
+  for (let targetY = 0; targetY < targetHeight; targetY += 1) {
+    const sourceYStart = Math.floor((targetY * sourceHeight) / targetHeight);
+    const sourceYEnd = Math.min(
+      sourceHeight,
+      Math.max(sourceYStart + 1, Math.floor(((targetY + 1) * sourceHeight) / targetHeight)),
+    );
+
+    for (let targetX = 0; targetX < targetWidth; targetX += 1) {
+      const sourceXStart = Math.floor((targetX * sourceWidth) / targetWidth);
+      const sourceXEnd = Math.min(
+        sourceWidth,
+        Math.max(sourceXStart + 1, Math.floor(((targetX + 1) * sourceWidth) / targetWidth)),
+      );
+      const targetIndex = (targetY * targetWidth + targetX) * 4;
+      const voteCounts = new Map<number, number>();
+      let winningColorKey = -1;
+      let winningVoteCount = 0;
+
+      for (let sourceY = sourceYStart; sourceY < sourceYEnd; sourceY += 1) {
+        for (let sourceX = sourceXStart; sourceX < sourceXEnd; sourceX += 1) {
+          const sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
+          const alpha = sourceData[sourceIndex + 3];
+
+          if (alpha < alphaThreshold) {
+            continue;
+          }
+
+          const colorKey =
+            (sourceData[sourceIndex] << 16) |
+            (sourceData[sourceIndex + 1] << 8) |
+            sourceData[sourceIndex + 2];
+          const nextVoteCount = (voteCounts.get(colorKey) ?? 0) + 1;
+          voteCounts.set(colorKey, nextVoteCount);
+
+          // 同票時は最初に最大票へ到達した色をそのまま残す。
+          if (nextVoteCount > winningVoteCount) {
+            winningVoteCount = nextVoteCount;
+            winningColorKey = colorKey;
+          }
+        }
+      }
+
+      if (winningColorKey === -1) {
+        resizedData[targetIndex + 3] = 0;
+        continue;
+      }
+
+      resizedData[targetIndex] = (winningColorKey >> 16) & 0xff;
+      resizedData[targetIndex + 1] = (winningColorKey >> 8) & 0xff;
+      resizedData[targetIndex + 2] = winningColorKey & 0xff;
+      resizedData[targetIndex + 3] = 255;
+    }
+  }
+
+  return resizedData;
+};
+
 const findNearestPccsIndex = (
   rgb: RgbColor,
   palette: PccsLabEntry[],
@@ -117,20 +202,13 @@ export const analyzeImageToPccs = async (
   const { maxDimension = 384, alphaThreshold = 16 } = options;
   const image = await loadImage(file);
   const resized = getResizedDimensions(image.naturalWidth, image.naturalHeight, maxDimension);
-  const canvas = document.createElement("canvas");
-  canvas.width = resized.width;
-  canvas.height = resized.height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-
-  if (!context) {
-    throw new Error("画像解析用の Canvas コンテキストを取得できませんでした。");
-  }
-
-  // 色分類の忠実さを優先して、縮小時の補間を抑える。
-  context.imageSmoothingEnabled = false;
-  context.drawImage(image, 0, 0, resized.width, resized.height);
-
-  const { data } = context.getImageData(0, 0, resized.width, resized.height);
+  const sourceImageData = getImageDataFromImage(image);
+  const data = resizeImageForAnalysisByMajority(
+    sourceImageData,
+    resized.width,
+    resized.height,
+    alphaThreshold,
+  );
   const counts = new Map<number, number>();
   const cache = new Map<number, number>();
   const classificationMap = new Int16Array(resized.width * resized.height);
@@ -180,12 +258,11 @@ export const analyzeImageToPccs = async (
     .map((cluster) => ({
       ...cluster,
       ratio: cluster.count / validPixelCount,
-      selected: false,
+      selected: cluster.count / validPixelCount >= 0.01,
     }))
     .sort((left, right) => right.count - left.count)
-    .map((cluster, index) => ({
+    .map((cluster) => ({
       ...cluster,
-      selected: index < 5,
     }));
 
   return {

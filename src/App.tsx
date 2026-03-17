@@ -157,6 +157,11 @@ export default function App() {
     };
   }, [previewUrl]);
 
+  const selectAnalysisColorDetail = (pccsId: string) => {
+    setActiveOverlay("image");
+    setSelectedId(pccsId);
+  };
+
   return (
     <div className="app-shell">
       <main className="app-main">
@@ -331,10 +336,7 @@ export default function App() {
                     setActiveOverlay("image");
                     clearImageHighlight();
                   }}
-                  onInspectCluster={(pccsId) => {
-                    setActiveOverlay("image");
-                    setSelectedId(pccsId);
-                  }}
+                  onInspectCluster={selectAnalysisColorDetail}
                 />
               </div>
             </>

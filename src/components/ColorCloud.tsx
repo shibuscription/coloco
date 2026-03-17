@@ -1,4 +1,5 @@
 import { ColorPoint } from "./ColorPoint";
+import { VToneLoop } from "./VToneLoop";
 import { isPointHighlighted, shouldDimPoint } from "../utils/highlight";
 import type { HighlightState } from "../utils/highlight";
 import type { PccsRenderablePoint } from "../utils/pccs3d";
@@ -13,6 +14,7 @@ type ColorCloudProps = {
 export function ColorCloud({ points, selectedId, highlight, onSelectPoint }: ColorCloudProps) {
   return (
     <>
+      <VToneLoop points={points} />
       {points.map((point) => (
         <ColorPoint
           key={point.id}
