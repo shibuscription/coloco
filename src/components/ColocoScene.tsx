@@ -1,6 +1,7 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
+import { Spherical, Vector3 } from "three";
 import {
   CAMERA_FOV,
   INITIAL_CAMERA_POSITION,
@@ -13,10 +14,30 @@ import { SceneGuides } from "./SceneGuides";
 import type { HighlightState } from "../utils/highlight";
 import type { PccsRenderablePoint } from "../utils/pccs3d";
 
+const SCENE_GROUP_OFFSET_Y = -2.5;
+
+function alignInitialCameraAzimuth(
+  basePosition: [number, number, number],
+  azimuth: number | null,
+): [number, number, number] {
+  if (azimuth === null) {
+    return basePosition;
+  }
+
+  const baseVector = new Vector3(...basePosition);
+  const spherical = new Spherical().setFromVector3(baseVector);
+  spherical.theta = azimuth;
+
+  const alignedVector = new Vector3().setFromSpherical(spherical);
+  return [alignedVector.x, alignedVector.y, alignedVector.z];
+}
+
 type ColocoSceneProps = {
   points: PccsRenderablePoint[];
   highlight: HighlightState;
   selectedId: string | null;
+  autoRotateEnabled: boolean;
+  alignYellowUpSignal: number;
   onSelectPoint: (id: string) => void;
   onClearSelection: () => void;
 };
@@ -25,6 +46,8 @@ export function ColocoScene({
   points,
   highlight,
   selectedId,
+  autoRotateEnabled,
+  alignYellowUpSignal,
   onSelectPoint,
   onClearSelection,
 }: ColocoSceneProps) {
@@ -42,11 +65,29 @@ export function ColocoScene({
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
+  const yellowPoint = points.find(
+    (point) => point.kind === "chromatic" && point.toneCode === "v" && point.hueIndex24 === 8,
+  );
+  const yellowUpAzimuth = yellowPoint
+    // PCCS の hue angle は +X 基準だが、OrbitControls の azimuth(theta) は +Z 基準。
+    // 真上視点で Y が 12 時方向に来る基準方位へ合わせるため、座標系の差をここで補正する。
+    ? (Math.PI * 3) / 2 - Math.atan2(yellowPoint.position.z, yellowPoint.position.x)
+    : null;
+  const initialCameraPosition = useMemo(
+    () => alignInitialCameraAzimuth(INITIAL_CAMERA_POSITION, yellowUpAzimuth),
+    [yellowUpAzimuth],
+  );
+  const initialMobileCameraPosition = useMemo(
+    () => alignInitialCameraAzimuth(MOBILE_INITIAL_CAMERA_POSITION, yellowUpAzimuth),
+    [yellowUpAzimuth],
+  );
+
   return (
     <Canvas
+      className="viewer-canvas"
       style={{ width: "100%", height: "100%", display: "block" }}
       camera={{
-        position: isMobileView ? MOBILE_INITIAL_CAMERA_POSITION : INITIAL_CAMERA_POSITION,
+        position: isMobileView ? initialMobileCameraPosition : initialCameraPosition,
         fov: isMobileView ? MOBILE_CAMERA_FOV : CAMERA_FOV,
         near: 0.1,
         far: 100,
@@ -65,7 +106,7 @@ export function ColocoScene({
           </Html>
         }
       >
-        <group position={[0, -2.5, 0]}>
+        <group position={[0, SCENE_GROUP_OFFSET_Y, 0]}>
           <SceneGuides />
           <ColorCloud
             points={points}
@@ -75,7 +116,12 @@ export function ColocoScene({
           />
         </group>
       </Suspense>
-      <SceneControls isMobileView={isMobileView} />
+      <SceneControls
+        isMobileView={isMobileView}
+        autoRotateEnabled={autoRotateEnabled}
+        alignYellowUpSignal={alignYellowUpSignal}
+        yellowUpAzimuth={yellowUpAzimuth}
+      />
     </Canvas>
   );
 }

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ColocoScene } from "./components/ColocoScene";
 import { ColorInfoPanel } from "./components/ColorInfoPanel";
 import { HighlightControls } from "./components/HighlightControls";
 import { ImageAnalysisPanel } from "./components/ImageAnalysisPanel";
+import { ViewerQuickControls } from "./components/ViewerQuickControls";
 import { Wordmark } from "./components/Wordmark";
 import { pccsAchromatic, pccsPoints, pccsRepresentativeHues12 } from "./data";
 import { analyzeImageToPccs, createPccsLabPalette } from "./utils/imageClassification";
@@ -57,6 +58,7 @@ const INITIAL_HIGHLIGHT: HighlightState = {
 };
 
 export default function App() {
+  const viewerInteractionRef = useRef<HTMLDivElement | null>(null);
   const points = useMemo(() => createRenderablePoints(pccsPoints, pccsAchromatic), []);
   const pccsLabPalette = useMemo(() => createPccsLabPalette(points), [points]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -70,6 +72,8 @@ export default function App() {
   const [isMobileView, setIsMobileView] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 980px)").matches : false,
   );
+  const [isAutoRotateEnabled, setIsAutoRotateEnabled] = useState(true);
+  const [alignYellowUpSignal, setAlignYellowUpSignal] = useState(0);
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
 
@@ -158,6 +162,20 @@ export default function App() {
     };
   }, [previewUrl]);
 
+  useEffect(() => {
+    const viewerElement = viewerInteractionRef.current;
+    if (!viewerElement) {
+      return;
+    }
+
+    const preventSelectStart = (event: Event) => event.preventDefault();
+    viewerElement.addEventListener("selectstart", preventSelectStart);
+
+    return () => {
+      viewerElement.removeEventListener("selectstart", preventSelectStart);
+    };
+  }, []);
+
   const selectAnalysisColorDetail = (pccsId: string) => {
     setActiveOverlay("image");
     setSelectedId(pccsId);
@@ -191,15 +209,28 @@ export default function App() {
     <div className="app-shell">
       <main className="app-main">
         <section className="viewer-stage">
-          <div className="viewer-card">
+          <div
+            ref={viewerInteractionRef}
+            className="viewer-card viewer-interaction-surface"
+            onContextMenu={(event) => event.preventDefault()}
+            onDragStart={(event) => event.preventDefault()}
+          >
             <ColocoScene
               points={points}
               highlight={highlight}
               selectedId={selectedId}
+              autoRotateEnabled={isAutoRotateEnabled}
+              alignYellowUpSignal={alignYellowUpSignal}
               onSelectPoint={setSelectedId}
               onClearSelection={() => setSelectedId(null)}
             />
           </div>
+
+          <ViewerQuickControls
+            autoRotateEnabled={isAutoRotateEnabled}
+            onToggleAutoRotate={() => setIsAutoRotateEnabled((current) => !current)}
+            onAlignYellowUp={() => setAlignYellowUpSignal((current) => current + 1)}
+          />
 
           <button
             type="button"
