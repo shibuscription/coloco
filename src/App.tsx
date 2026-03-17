@@ -8,6 +8,7 @@ import { pccsAchromatic, pccsPoints, pccsRepresentativeHues12 } from "./data";
 import { analyzeImageToPccs, createPccsLabPalette } from "./utils/imageClassification";
 import type { ImagePccsAnalysis } from "./utils/imageClassification";
 import type { HighlightState } from "./utils/highlight";
+import { getSwipeNavigationTargetId } from "./utils/pccsNavigation";
 import { createRenderablePoints } from "./utils/pccs3d";
 
 type OverlayKind = "settings" | "image" | null;
@@ -162,6 +163,30 @@ export default function App() {
     setSelectedId(pccsId);
   };
 
+  const clearLoadedImage = () => {
+    setAnalysis(null);
+    setSourceImageName("");
+    setPreviewUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+
+      return "";
+    });
+    setHighlight((current) => ({
+      ...current,
+      imageIds: [],
+    }));
+  };
+
+  const handleInfoPanelSwipeNavigate = (direction: "left" | "right" | "up" | "down") => {
+    const nextId = getSwipeNavigationTargetId(points, selectedId, direction);
+
+    if (nextId && nextId !== selectedId) {
+      setSelectedId(nextId);
+    }
+  };
+
   return (
     <div className="app-shell">
       <main className="app-main">
@@ -269,7 +294,10 @@ export default function App() {
           </section>
 
           <div className={`info-overlay ${selectedPoint ? "is-visible" : ""}`}>
-            <ColorInfoPanel selectedPoint={selectedPoint} />
+            <ColorInfoPanel
+              selectedPoint={selectedPoint}
+              onSwipeNavigate={handleInfoPanelSwipeNavigate}
+            />
           </div>
 
           {isImageModalOpen ? (
@@ -332,6 +360,10 @@ export default function App() {
                       };
                     })
                   }
+                  onClearImage={() => {
+                    setActiveOverlay("image");
+                    clearLoadedImage();
+                  }}
                   onClearAll={() => {
                     setActiveOverlay("image");
                     clearImageHighlight();

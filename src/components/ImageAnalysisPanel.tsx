@@ -12,6 +12,7 @@ type ImageAnalysisPanelProps = {
   sourceImageName: string;
   previewUrl: string;
   onPickImage: (file: File) => void;
+  onClearImage: () => void;
   onToggleCluster: (pccsId: string) => void;
   onClearAll: () => void;
   onFocusPanel: () => void;
@@ -59,6 +60,7 @@ export function ImageAnalysisPanel({
   sourceImageName,
   previewUrl,
   onPickImage,
+  onClearImage,
   onToggleCluster,
   onClearAll,
   onFocusPanel,
@@ -251,6 +253,11 @@ export function ImageAnalysisPanel({
     event.target.value = "";
   };
 
+  const openFilePicker = () => {
+    onFocusPanel();
+    inputRef.current?.click();
+  };
+
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     if (!previewUrl) {
       return;
@@ -420,12 +427,37 @@ export function ImageAnalysisPanel({
           <div
             ref={viewportRef}
             className={`analysis-preview ${previewUrl ? "has-image" : ""}`}
+            onClick={() => {
+              if (!previewUrl) {
+                openFilePicker();
+              }
+            }}
             onWheel={handleWheel}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={finishPointer}
             onPointerCancel={finishPointer}
           >
+            {previewUrl ? (
+              <button
+                type="button"
+                className="analysis-preview-clear"
+                aria-label="画像をクリア"
+                title="画像をクリア"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onFocusPanel();
+                  onClearImage();
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                ×
+              </button>
+            ) : null}
             {previewUrl && metrics ? (
               <div
                 className="analysis-preview-stage"
@@ -447,7 +479,7 @@ export function ImageAnalysisPanel({
                 ) : null}
               </div>
             ) : (
-              <div className="analysis-preview-placeholder">画像を選ぶと分類結果をここで確認できます。</div>
+              <div className="analysis-preview-placeholder" aria-hidden="true" />
             )}
           </div>
 
@@ -456,7 +488,7 @@ export function ImageAnalysisPanel({
               <button
                 type="button"
                 className="secondary-button secondary-button-small analysis-action-button"
-                onClick={() => inputRef.current?.click()}
+                onClick={openFilePicker}
                 title="画像を選ぶ"
                 aria-label="画像を選ぶ"
               >

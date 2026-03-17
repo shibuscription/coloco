@@ -1,4 +1,4 @@
-export const CHROMA_SCALE = 0.42;
+export const CHROMA_SCALE = 0.336;
 export const VERTICAL_SCALE = 0.57;
 export const POINT_RADIUS = 0.14;
 export const SELECTED_SCALE = 1.45;
