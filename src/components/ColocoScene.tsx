@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { forwardRef, Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { Spherical, Vector3 } from "three";
@@ -10,6 +10,7 @@ import {
 } from "../constants/viewConfig";
 import { ColorCloud } from "./ColorCloud";
 import { SceneControls } from "./SceneControls";
+import type { SceneControlsHandle } from "./SceneControls";
 import { SceneGuides } from "./SceneGuides";
 import type { HighlightState } from "../utils/highlight";
 import type { PccsRenderablePoint } from "../utils/pccs3d";
@@ -37,20 +38,29 @@ type ColocoSceneProps = {
   highlight: HighlightState;
   selectedId: string | null;
   autoRotateEnabled: boolean;
-  alignYellowUpSignal: number;
+  northLockEnabled: boolean;
+  guideLinesVisible: boolean;
+  keyboardInput: {
+    left: boolean;
+    right: boolean;
+    up: boolean;
+    down: boolean;
+  };
   onSelectPoint: (id: string) => void;
   onClearSelection: () => void;
 };
 
-export function ColocoScene({
+export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(function ColocoScene({
   points,
   highlight,
   selectedId,
   autoRotateEnabled,
-  alignYellowUpSignal,
+  northLockEnabled,
+  guideLinesVisible,
+  keyboardInput,
   onSelectPoint,
   onClearSelection,
-}: ColocoSceneProps) {
+}: ColocoSceneProps, ref) {
   const [isMobileView, setIsMobileView] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 980px)").matches : false,
   );
@@ -112,16 +122,19 @@ export function ColocoScene({
             points={points}
             selectedId={selectedId}
             highlight={highlight}
+            guideLinesVisible={guideLinesVisible}
             onSelectPoint={onSelectPoint}
           />
         </group>
       </Suspense>
       <SceneControls
+        ref={ref}
         isMobileView={isMobileView}
         autoRotateEnabled={autoRotateEnabled}
-        alignYellowUpSignal={alignYellowUpSignal}
+        northLockEnabled={northLockEnabled}
         yellowUpAzimuth={yellowUpAzimuth}
+        keyboardInput={keyboardInput}
       />
     </Canvas>
   );
-}
+});

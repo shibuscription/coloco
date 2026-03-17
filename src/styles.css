@@ -93,6 +93,15 @@ select {
   overflow: hidden;
 }
 
+.viewer-card:focus-visible,
+.info-overlay-card:focus-visible {
+  outline: 2px solid rgba(82, 59, 29, 0.68);
+  outline-offset: -2px;
+  box-shadow:
+    0 0 0 3px rgba(255, 252, 247, 0.44),
+    0 20px 48px rgba(106, 81, 47, 0.12);
+}
+
 .viewer-interaction-surface,
 .viewer-canvas,
 .viewer-canvas canvas {
@@ -102,49 +111,6 @@ select {
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-drag: none;
-}
-
-.viewer-quick-controls {
-  position: absolute;
-  top: 68px;
-  right: 16px;
-  z-index: 17;
-  display: grid;
-  gap: 10px;
-  pointer-events: none;
-}
-
-.viewer-quick-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid rgba(82, 59, 29, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 252, 247, 0.78);
-  color: #2b251d;
-  backdrop-filter: blur(18px);
-  box-shadow: 0 10px 20px rgba(43, 37, 29, 0.14);
-  pointer-events: auto;
-}
-
-.viewer-quick-button-icon {
-  font-size: 0.98rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.viewer-quick-button-svg {
-  width: 18px;
-  height: 18px;
-  display: block;
-}
-
-.viewer-quick-button.is-active {
-  background: rgba(188, 133, 64, 0.88);
-  border-color: rgba(131, 88, 33, 0.42);
-  color: #fffaf1;
 }
 
 .menu-toggle,
@@ -336,6 +302,49 @@ select {
 }
 
 .highlight-controls {
+  display: block;
+}
+
+.panel-action-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
+.panel-action-buttons {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.panel-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(82, 59, 29, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.78);
+  color: #2b251d;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 10px 20px rgba(43, 37, 29, 0.12);
+}
+
+.panel-action-button.is-active {
+  background: rgba(188, 133, 64, 0.88);
+  border-color: rgba(131, 88, 33, 0.42);
+  color: #fffaf1;
+}
+
+.panel-action-button-icon {
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.panel-action-button-svg {
+  width: 18px;
+  height: 18px;
   display: block;
 }
 
@@ -895,11 +904,14 @@ select {
     transform: translateY(-24px);
   }
 
-  .settings-backdrop,
-  .settings-backdrop.is-open,
-  .settings-backdrop.is-front {
-    background: transparent;
+  .settings-backdrop {
+    background: rgba(43, 37, 29, 0);
     pointer-events: none;
+  }
+
+  .settings-backdrop.is-open {
+    background: rgba(43, 37, 29, 0.2);
+    pointer-events: auto;
   }
 
   .analysis-modal-shell {
@@ -940,15 +952,9 @@ select {
     padding: 7px 10px;
   }
 
-  .viewer-quick-controls {
-    top: 60px;
-    right: 12px;
-    gap: 8px;
-  }
-
-  .viewer-quick-button {
-    width: 46px;
-    height: 46px;
+  .panel-action-button {
+    width: 42px;
+    height: 42px;
   }
 
   .info-overlay {

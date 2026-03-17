@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { OrbitControls } from "@react-three/drei";
 import { PerspectiveCamera, Spherical, Vector3 } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -21,19 +21,43 @@ const easeOutCubic = (value: number): number => 1 - (1 - value) ** 3;
 type SceneControlsProps = {
   isMobileView: boolean;
   autoRotateEnabled: boolean;
-  alignYellowUpSignal: number;
+  northLockEnabled: boolean;
   yellowUpAzimuth: number | null;
+  keyboardInput: {
+    left: boolean;
+    right: boolean;
+    up: boolean;
+    down: boolean;
+  };
 };
 
-export function SceneControls({
+export type SceneControlsHandle = {
+  nudgeAzimuth: (delta: number) => void;
+  nudgePolar: (delta: number) => void;
+};
+
+const KEYBOARD_AZIMUTH_SPEED = Math.PI * 0.9;
+const KEYBOARD_POLAR_SPEED = Math.PI * 0.72;
+const KEYBOARD_EASING_FACTOR = 0.22;
+const KEYBOARD_SETTLE_EPSILON = 0.0008;
+
+export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>(function SceneControls({
   isMobileView,
   autoRotateEnabled,
-  alignYellowUpSignal,
+  northLockEnabled,
   yellowUpAzimuth,
-}: SceneControlsProps) {
+  keyboardInput,
+}: SceneControlsProps, ref) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const alignFrameRef = useRef<number | null>(null);
+  const keyboardFrameRef = useRef<number | null>(null);
+  const keyboardLastTickRef = useRef<number | null>(null);
+  const keyboardTargetRef = useRef<{ azimuth: number; polar: number } | null>(null);
+  const keyboardInputRef = useRef(keyboardInput);
+  const northLockEnabledRef = useRef(northLockEnabled);
+  const yellowUpAzimuthRef = useRef(yellowUpAzimuth);
+  const previousNorthLockRef = useRef(false);
   const [isInteractionPaused, setIsInteractionPaused] = useState(false);
   const [isAligning, setIsAligning] = useState(false);
 
@@ -44,6 +68,73 @@ export function SceneControls({
     }
     setIsAligning(false);
   };
+
+  const cancelKeyboardAnimation = () => {
+    if (keyboardFrameRef.current !== null) {
+      window.cancelAnimationFrame(keyboardFrameRef.current);
+      keyboardFrameRef.current = null;
+    }
+    keyboardLastTickRef.current = null;
+  };
+
+  const applySphericalPosition = (azimuth: number, polar: number) => {
+    const controls = controlsRef.current;
+    if (!controls) {
+      return;
+    }
+
+    const camera = controls.object as PerspectiveCamera;
+    const target = controls.target.clone();
+    const radius = controls.getDistance();
+    const spherical = new Spherical(radius, polar, azimuth);
+    const nextOffset = new Vector3().setFromSpherical(spherical);
+
+    camera.position.copy(target).add(nextOffset);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(target);
+    camera.updateProjectionMatrix();
+    controls.update();
+  };
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      nudgeAzimuth(delta: number) {
+        const controls = controlsRef.current;
+        if (!controls || northLockEnabled) {
+          return;
+        }
+
+        cancelAlignment();
+        applySphericalPosition(controls.getAzimuthalAngle() + delta, controls.getPolarAngle());
+      },
+      nudgePolar(delta: number) {
+        const controls = controlsRef.current;
+        if (!controls) {
+          return;
+        }
+
+        cancelAlignment();
+        const nextPolar = Math.min(MAX_POLAR_ANGLE, Math.max(MIN_POLAR_ANGLE, controls.getPolarAngle() + delta));
+        applySphericalPosition(controls.getAzimuthalAngle(), nextPolar);
+      },
+    }),
+    [northLockEnabled],
+  );
+
+  const hasKeyboardInput = keyboardInput.left || keyboardInput.right || keyboardInput.up || keyboardInput.down;
+
+  useEffect(() => {
+    keyboardInputRef.current = keyboardInput;
+  }, [keyboardInput]);
+
+  useEffect(() => {
+    northLockEnabledRef.current = northLockEnabled;
+  }, [northLockEnabled]);
+
+  useEffect(() => {
+    yellowUpAzimuthRef.current = yellowUpAzimuth;
+  }, [yellowUpAzimuth]);
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -56,6 +147,8 @@ export function SceneControls({
         window.clearTimeout(resumeTimerRef.current);
       }
       cancelAlignment();
+      keyboardTargetRef.current = null;
+      cancelKeyboardAnimation();
       setIsInteractionPaused(true);
     };
 
@@ -75,6 +168,7 @@ export function SceneControls({
         window.clearTimeout(resumeTimerRef.current);
       }
       cancelAlignment();
+      cancelKeyboardAnimation();
     };
   }, []);
 
@@ -93,7 +187,10 @@ export function SceneControls({
 
   useEffect(() => {
     const controls = controlsRef.current;
-    if (!controls || alignYellowUpSignal === 0 || yellowUpAzimuth === null) {
+    const wasNorthLocked = previousNorthLockRef.current;
+    previousNorthLockRef.current = northLockEnabled;
+
+    if (!controls || yellowUpAzimuth === null || !northLockEnabled || wasNorthLocked) {
       return;
     }
 
@@ -132,7 +229,94 @@ export function SceneControls({
     };
 
     alignFrameRef.current = window.requestAnimationFrame(step);
-  }, [alignYellowUpSignal, yellowUpAzimuth]);
+  }, [northLockEnabled, yellowUpAzimuth]);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls || isAligning) {
+      return;
+    }
+
+    const step = (now: number) => {
+      const activeControls = controlsRef.current;
+      if (!activeControls) {
+        cancelKeyboardAnimation();
+        return;
+      }
+
+      const latestKeyboardInput = keyboardInputRef.current;
+      const latestHasKeyboardInput =
+        latestKeyboardInput.left || latestKeyboardInput.right || latestKeyboardInput.up || latestKeyboardInput.down;
+      const latestNorthLockEnabled = northLockEnabledRef.current;
+      const latestYellowUpAzimuth = yellowUpAzimuthRef.current;
+
+      const currentAzimuth = activeControls.getAzimuthalAngle();
+      const currentPolar = activeControls.getPolarAngle();
+      const previousTarget = keyboardTargetRef.current ?? {
+        azimuth: currentAzimuth,
+        polar: currentPolar,
+      };
+      const previousTick = keyboardLastTickRef.current ?? now;
+      const deltaSeconds = Math.min(0.05, Math.max(0.001, (now - previousTick) / 1000));
+      keyboardLastTickRef.current = now;
+
+      let nextTargetAzimuth =
+        latestNorthLockEnabled && latestYellowUpAzimuth !== null ? latestYellowUpAzimuth : previousTarget.azimuth;
+      let nextTargetPolar = previousTarget.polar;
+
+      if (latestHasKeyboardInput && !(latestNorthLockEnabled && latestYellowUpAzimuth !== null)) {
+        if (latestKeyboardInput.left) {
+          nextTargetAzimuth -= KEYBOARD_AZIMUTH_SPEED * deltaSeconds;
+        }
+        if (latestKeyboardInput.right) {
+          nextTargetAzimuth += KEYBOARD_AZIMUTH_SPEED * deltaSeconds;
+        }
+      }
+
+      if (latestHasKeyboardInput) {
+        if (latestKeyboardInput.up) {
+          nextTargetPolar -= KEYBOARD_POLAR_SPEED * deltaSeconds;
+        }
+        if (latestKeyboardInput.down) {
+          nextTargetPolar += KEYBOARD_POLAR_SPEED * deltaSeconds;
+        }
+      }
+
+      nextTargetPolar = Math.min(MAX_POLAR_ANGLE, Math.max(MIN_POLAR_ANGLE, nextTargetPolar));
+      keyboardTargetRef.current = {
+        azimuth: nextTargetAzimuth,
+        polar: nextTargetPolar,
+      };
+
+      const nextAzimuth =
+        latestNorthLockEnabled && latestYellowUpAzimuth !== null
+          ? latestYellowUpAzimuth
+          : currentAzimuth + normalizeAngle(nextTargetAzimuth - currentAzimuth) * KEYBOARD_EASING_FACTOR;
+      const nextPolar = currentPolar + (nextTargetPolar - currentPolar) * KEYBOARD_EASING_FACTOR;
+
+      applySphericalPosition(nextAzimuth, nextPolar);
+
+      const azimuthDelta =
+        latestNorthLockEnabled && latestYellowUpAzimuth !== null ? 0 : Math.abs(normalizeAngle(nextTargetAzimuth - nextAzimuth));
+      const polarDelta = Math.abs(nextTargetPolar - nextPolar);
+      const shouldContinue = latestHasKeyboardInput || azimuthDelta > KEYBOARD_SETTLE_EPSILON || polarDelta > KEYBOARD_SETTLE_EPSILON;
+
+      if (!shouldContinue) {
+        keyboardTargetRef.current = {
+          azimuth: nextAzimuth,
+          polar: nextPolar,
+        };
+        cancelKeyboardAnimation();
+        return;
+      }
+
+      keyboardFrameRef.current = window.requestAnimationFrame(step);
+    };
+
+    if (keyboardFrameRef.current === null && (hasKeyboardInput || keyboardTargetRef.current !== null)) {
+      keyboardFrameRef.current = window.requestAnimationFrame(step);
+    }
+  }, [hasKeyboardInput, isAligning, keyboardInput, northLockEnabled, yellowUpAzimuth]);
 
   return (
     <OrbitControls
@@ -144,8 +328,10 @@ export function SceneControls({
       maxPolarAngle={MAX_POLAR_ANGLE}
       minDistance={MIN_DISTANCE}
       maxDistance={isMobileView ? MOBILE_MAX_DISTANCE : MAX_DISTANCE}
-      autoRotate={autoRotateEnabled && !isInteractionPaused && !isAligning}
+      minAzimuthAngle={northLockEnabled && !isAligning && yellowUpAzimuth !== null ? yellowUpAzimuth : -Infinity}
+      maxAzimuthAngle={northLockEnabled && !isAligning && yellowUpAzimuth !== null ? yellowUpAzimuth : Infinity}
+      autoRotate={autoRotateEnabled && !isInteractionPaused && !isAligning && !hasKeyboardInput}
       autoRotateSpeed={AUTO_ROTATE_SPEED}
     />
   );
-}
+});

@@ -5,6 +5,7 @@ import type { SwipeDirection } from "../utils/pccsNavigation";
 type ColorInfoPanelProps = {
   selectedPoint: PccsRenderablePoint | null;
   onSwipeNavigate: (direction: SwipeDirection) => void;
+  onFocusPanel?: () => void;
 };
 
 type Point = {
@@ -26,7 +27,7 @@ const getContrastTextColor = (hex: string): string => {
   return luminance > 145 ? "#2b251d" : "#fffaf1";
 };
 
-export function ColorInfoPanel({ selectedPoint, onSwipeNavigate }: ColorInfoPanelProps) {
+export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }: ColorInfoPanelProps) {
   const swipeStartRef = useRef<Point | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
   const [isMobileView, setIsMobileView] = useState(() =>
@@ -94,6 +95,28 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate }: ColorInfoPane
     onSwipeNavigate(deltaY < 0 ? "up" : "down");
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    const directionMap: Partial<Record<string, SwipeDirection>> = {
+      ArrowLeft: "left",
+      ArrowRight: "right",
+      ArrowUp: "up",
+      ArrowDown: "down",
+    };
+    const direction = directionMap[event.key];
+
+    if (!direction) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onSwipeNavigate(direction);
+  };
+
   const showDetails = !isMobileView || isMobileExpanded;
   const rgbText = `${selectedPoint.rgb.r}, ${selectedPoint.rgb.g}, ${selectedPoint.rgb.b}`;
 
@@ -127,7 +150,14 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate }: ColorInfoPane
       className={`panel info-panel info-overlay-card ${isMobileView ? "is-mobile-collapsible" : ""} ${
         showDetails ? "is-expanded" : "is-collapsed"
       }`}
-      onPointerDown={handlePointerDown}
+      tabIndex={0}
+      aria-label="色情報パネル"
+      onKeyDown={handleKeyDown}
+      onPointerDown={(event) => {
+        onFocusPanel?.();
+        event.currentTarget.focus();
+        handlePointerDown(event);
+      }}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
       onPointerMove={(event) => {

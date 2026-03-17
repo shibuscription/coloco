@@ -3,8 +3,8 @@ import { ColocoScene } from "./components/ColocoScene";
 import { ColorInfoPanel } from "./components/ColorInfoPanel";
 import { HighlightControls } from "./components/HighlightControls";
 import { ImageAnalysisPanel } from "./components/ImageAnalysisPanel";
-import { ViewerQuickControls } from "./components/ViewerQuickControls";
 import { Wordmark } from "./components/Wordmark";
+import type { SceneControlsHandle } from "./components/SceneControls";
 import { pccsAchromatic, pccsPoints, pccsRepresentativeHues12 } from "./data";
 import { analyzeImageToPccs, createPccsLabPalette } from "./utils/imageClassification";
 import type { ImagePccsAnalysis } from "./utils/imageClassification";
@@ -57,8 +57,29 @@ const INITIAL_HIGHLIGHT: HighlightState = {
   imageIds: [],
 };
 
+type ViewerKeyboardInput = {
+  left: boolean;
+  right: boolean;
+  up: boolean;
+  down: boolean;
+};
+
+const INITIAL_VIEWER_KEYBOARD_INPUT: ViewerKeyboardInput = {
+  left: false,
+  right: false,
+  up: false,
+  down: false,
+};
+
+const clearViewerKeyboardInput = (): ViewerKeyboardInput => ({
+  ...INITIAL_VIEWER_KEYBOARD_INPUT,
+});
+
 export default function App() {
   const viewerInteractionRef = useRef<HTMLDivElement | null>(null);
+  const sceneControlsRef = useRef<SceneControlsHandle | null>(null);
+  const viewerKeyboardInputRef = useRef<ViewerKeyboardInput>(INITIAL_VIEWER_KEYBOARD_INPUT);
+  const isViewerKeyboardActiveRef = useRef(false);
   const points = useMemo(() => createRenderablePoints(pccsPoints, pccsAchromatic), []);
   const pccsLabPalette = useMemo(() => createPccsLabPalette(points), [points]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -72,8 +93,11 @@ export default function App() {
   const [isMobileView, setIsMobileView] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 980px)").matches : false,
   );
+  const [viewerKeyboardInput, setViewerKeyboardInput] = useState<ViewerKeyboardInput>(INITIAL_VIEWER_KEYBOARD_INPUT);
+  const [isViewerKeyboardActive, setIsViewerKeyboardActive] = useState(false);
   const [isAutoRotateEnabled, setIsAutoRotateEnabled] = useState(true);
-  const [alignYellowUpSignal, setAlignYellowUpSignal] = useState(0);
+  const [isNorthLockEnabled, setIsNorthLockEnabled] = useState(false);
+  const [isGuideLinesVisible, setIsGuideLinesVisible] = useState(false);
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
 
@@ -208,6 +232,91 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const setKeyboardInputState = (next: ViewerKeyboardInput) => {
+      const current = viewerKeyboardInputRef.current;
+      if (
+        current.left === next.left &&
+        current.right === next.right &&
+        current.up === next.up &&
+        current.down === next.down
+      ) {
+        return;
+      }
+
+      viewerKeyboardInputRef.current = next;
+      setViewerKeyboardInput(next);
+    };
+
+    const updateArrowKeyState = (key: string, pressed: boolean) => {
+      if (!isViewerKeyboardActiveRef.current) {
+        return;
+      }
+
+      const current = viewerKeyboardInputRef.current;
+      switch (key) {
+        case "ArrowLeft":
+          setKeyboardInputState({ ...current, left: pressed });
+          break;
+        case "ArrowRight":
+          setKeyboardInputState({ ...current, right: pressed });
+          break;
+        case "ArrowUp":
+          setKeyboardInputState({ ...current, up: pressed });
+          break;
+        case "ArrowDown":
+          setKeyboardInputState({ ...current, down: pressed });
+          break;
+        default:
+          break;
+      }
+    };
+
+    const clearAllViewerKeys = () => {
+      setKeyboardInputState(clearViewerKeyboardInput());
+    };
+
+    const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if (!isViewerKeyboardActiveRef.current) {
+        return;
+      }
+
+      if (event.key.startsWith("Arrow")) {
+        event.preventDefault();
+        updateArrowKeyState(event.key, true);
+      }
+    };
+
+    const handleWindowKeyUp = (event: KeyboardEvent) => {
+      if (!isViewerKeyboardActiveRef.current) {
+        return;
+      }
+
+      if (event.key.startsWith("Arrow")) {
+        event.preventDefault();
+        updateArrowKeyState(event.key, false);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        clearAllViewerKeys();
+      }
+    };
+
+    window.addEventListener("keydown", handleWindowKeyDown);
+    window.addEventListener("keyup", handleWindowKeyUp);
+    window.addEventListener("blur", clearAllViewerKeys);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown);
+      window.removeEventListener("keyup", handleWindowKeyUp);
+      window.removeEventListener("blur", clearAllViewerKeys);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
@@ -228,6 +337,18 @@ export default function App() {
       viewerElement.removeEventListener("selectstart", preventSelectStart);
     };
   }, []);
+
+  const activateViewerKeyboardControl = () => {
+    isViewerKeyboardActiveRef.current = true;
+    setIsViewerKeyboardActive(true);
+  };
+
+  const deactivateViewerKeyboardControl = () => {
+    isViewerKeyboardActiveRef.current = false;
+    setIsViewerKeyboardActive(false);
+    viewerKeyboardInputRef.current = clearViewerKeyboardInput();
+    setViewerKeyboardInput(clearViewerKeyboardInput());
+  };
 
   const selectAnalysisColorDetail = (pccsId: string) => {
     setActiveOverlay("image");
@@ -258,6 +379,26 @@ export default function App() {
     }
   };
 
+  const handleToggleAutoRotate = () => {
+    setIsAutoRotateEnabled((current) => {
+      const next = !current;
+      if (next) {
+        setIsNorthLockEnabled(false);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleNorthLock = () => {
+    setIsNorthLockEnabled((current) => {
+      const next = !current;
+      if (next) {
+        setIsAutoRotateEnabled(false);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="app-shell">
       <main className="app-main">
@@ -265,31 +406,40 @@ export default function App() {
           <div
             ref={viewerInteractionRef}
             className="viewer-card viewer-interaction-surface"
+            tabIndex={0}
+            aria-label="3Dビュー"
+            data-keyboard-active={isViewerKeyboardActive ? "true" : "false"}
+            onFocus={() => activateViewerKeyboardControl()}
+            onBlur={() => {
+              deactivateViewerKeyboardControl();
+            }}
+            onPointerDown={(event) => {
+              activateViewerKeyboardControl();
+              event.currentTarget.focus();
+            }}
             onContextMenu={(event) => event.preventDefault()}
             onDragStart={(event) => event.preventDefault()}
           >
             <ColocoScene
+              ref={sceneControlsRef}
               points={points}
               highlight={highlight}
               selectedId={selectedId}
               autoRotateEnabled={isAutoRotateEnabled}
-              alignYellowUpSignal={alignYellowUpSignal}
+              northLockEnabled={isNorthLockEnabled}
+              guideLinesVisible={isGuideLinesVisible}
+              keyboardInput={viewerKeyboardInput}
               onSelectPoint={setSelectedId}
               onClearSelection={() => setSelectedId(null)}
             />
           </div>
-
-          <ViewerQuickControls
-            autoRotateEnabled={isAutoRotateEnabled}
-            onToggleAutoRotate={() => setIsAutoRotateEnabled((current) => !current)}
-            onAlignYellowUp={() => setAlignYellowUpSignal((current) => current + 1)}
-          />
 
           <button
             type="button"
             className={`image-toggle ${isImageModalOpen ? "is-open" : ""}`}
             aria-label={isImageModalOpen ? "画像解析を閉じる" : "画像解析を開く"}
             aria-expanded={isImageModalOpen}
+            onPointerDown={() => deactivateViewerKeyboardControl()}
             onClick={() => {
               setIsImageModalOpen((open) => {
                 const next = !open;
@@ -316,6 +466,7 @@ export default function App() {
             className={`menu-toggle ${isSettingsOpen ? "is-open" : ""}`}
             aria-label={isSettingsOpen ? "設定を閉じる" : "設定を開く"}
             aria-expanded={isSettingsOpen}
+            onPointerDown={() => deactivateViewerKeyboardControl()}
             onClick={() => {
               setIsSettingsOpen((open) => {
                 const next = !open;
@@ -345,11 +496,20 @@ export default function App() {
           <section
             className={`settings-overlay ${isSettingsOpen ? "is-open" : ""} ${activeOverlay === "settings" ? "is-front" : ""}`}
             onClick={(event) => event.stopPropagation()}
-            onPointerDown={() => setActiveOverlay("settings")}
+            onPointerDown={() => {
+              deactivateViewerKeyboardControl();
+              setActiveOverlay("settings");
+            }}
           >
             <HighlightControls
               toneValue={highlight.toneValue}
               hueValue={highlight.hueValue}
+              autoRotateEnabled={isAutoRotateEnabled}
+              northLockEnabled={isNorthLockEnabled}
+              guideLinesVisible={isGuideLinesVisible}
+              onToggleAutoRotate={handleToggleAutoRotate}
+              onToggleNorthLock={handleToggleNorthLock}
+              onToggleGuideLines={() => setIsGuideLinesVisible((current) => !current)}
               onToneChange={(value) => {
                 if (value) {
                   clearImageHighlight();
@@ -381,6 +541,7 @@ export default function App() {
             <ColorInfoPanel
               selectedPoint={selectedPoint}
               onSwipeNavigate={handleInfoPanelSwipeNavigate}
+              onFocusPanel={deactivateViewerKeyboardControl}
             />
           </div>
 
@@ -398,7 +559,10 @@ export default function App() {
                   analysis={analysis}
                   sourceImageName={sourceImageName}
                   previewUrl={previewUrl}
-                  onFocusPanel={() => setActiveOverlay("image")}
+                  onFocusPanel={() => {
+                    deactivateViewerKeyboardControl();
+                    setActiveOverlay("image");
+                  }}
                   onPickImage={async (file) => {
                     setActiveOverlay("image");
                     const nextPreviewUrl = URL.createObjectURL(file);
