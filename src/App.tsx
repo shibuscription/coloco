@@ -3,6 +3,7 @@ import { ColocoScene } from "./components/ColocoScene";
 import { ColorInfoPanel } from "./components/ColorInfoPanel";
 import { HighlightControls } from "./components/HighlightControls";
 import { ImageAnalysisPanel } from "./components/ImageAnalysisPanel";
+import { MultiSelectHighlightPanel } from "./components/MultiSelectHighlightPanel";
 import { Wordmark } from "./components/Wordmark";
 import type { SceneControlsHandle } from "./components/SceneControls";
 import { pccsAchromatic, pccsPoints, pccsRepresentativeHues12 } from "./data";
@@ -12,7 +13,7 @@ import type { HighlightState } from "./utils/highlight";
 import { getSwipeNavigationTargetId } from "./utils/pccsNavigation";
 import { createRenderablePoints } from "./utils/pccs3d";
 
-type OverlayKind = "settings" | "image" | null;
+type OverlayKind = "settings" | "image" | "multi" | null;
 type AutoRotateMode = "cw" | "ccw" | "off";
 
 type ToneOption = {
@@ -56,6 +57,7 @@ const INITIAL_HIGHLIGHT: HighlightState = {
   toneValue: "",
   hueValue: "",
   imageIds: [],
+  customIds: [],
 };
 
 type ViewerKeyboardInput = {
@@ -81,6 +83,7 @@ export default function App() {
   const sceneControlsRef = useRef<SceneControlsHandle | null>(null);
   const viewerKeyboardInputRef = useRef<ViewerKeyboardInput>(INITIAL_VIEWER_KEYBOARD_INPUT);
   const isViewerKeyboardActiveRef = useRef(false);
+  const multiSelectedIdsRef = useRef<string[]>([]);
   const cameraRestoreStateRef = useRef<{
     analysis: ImagePccsAnalysis | null;
     sourceImageName: string;
@@ -94,7 +97,9 @@ export default function App() {
   const [highlight, setHighlight] = useState<HighlightState>(INITIAL_HIGHLIGHT);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [isMultiSelectOpen, setIsMultiSelectOpen] = useState(false);
   const [activeOverlay, setActiveOverlay] = useState<OverlayKind>(null);
+  const [multiSelectedIds, setMultiSelectedIds] = useState<string[]>([]);
   const [analysis, setAnalysis] = useState<ImagePccsAnalysis | null>(null);
   const [sourceImageName, setSourceImageName] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
@@ -110,6 +115,10 @@ export default function App() {
   const [showToneGuides, setShowToneGuides] = useState(false);
   const [showHueGuides, setShowHueGuides] = useState(false);
   const [showLightnessGuides, setShowLightnessGuides] = useState(false);
+
+  useEffect(() => {
+    multiSelectedIdsRef.current = multiSelectedIds;
+  }, [multiSelectedIds]);
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
 
@@ -177,6 +186,25 @@ export default function App() {
     }));
   };
 
+  const clearMultiSelectHighlight = () => {
+    setMultiSelectedIds([]);
+    setHighlight((current) => ({
+      ...current,
+      customIds: [],
+    }));
+  };
+
+  const applyMultiSelectHighlight = (nextIds: string[]) => {
+    setMultiSelectedIds(nextIds);
+    clearImageHighlight();
+    setHighlight({
+      toneValue: "",
+      hueValue: "",
+      imageIds: [],
+      customIds: nextIds,
+    });
+  };
+
   const applyImageAnalysisResult = (
     nextAnalysis: ImagePccsAnalysis,
     {
@@ -207,7 +235,9 @@ export default function App() {
         toneValue: "",
         hueValue: "",
         imageIds: nextClusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId),
+        customIds: [],
       });
+      setMultiSelectedIds([]);
 
       return nextResolvedAnalysis;
     });
@@ -228,7 +258,9 @@ export default function App() {
         toneValue: "",
         hueValue: "",
         imageIds: selected ? nextClusters.map((cluster) => cluster.pccsId) : [],
+        customIds: [],
       });
+      setMultiSelectedIds([]);
 
       return {
         ...current,
@@ -257,7 +289,9 @@ export default function App() {
         toneValue: "",
         hueValue: "",
         imageIds: nextClusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId),
+        customIds: [],
       });
+      setMultiSelectedIds([]);
 
       return {
         ...current,
@@ -271,6 +305,7 @@ export default function App() {
       if (event.key === "Escape") {
         setIsSettingsOpen(false);
         setIsImageModalOpen(false);
+        setIsMultiSelectOpen(false);
         setActiveOverlay(null);
       }
     };
@@ -501,6 +536,29 @@ export default function App() {
     });
   };
 
+  const handleToggleMultiSelectTile = (pccsId: string) => {
+    const currentIds = multiSelectedIdsRef.current;
+    const nextIds = currentIds.includes(pccsId)
+      ? currentIds.filter((id) => id !== pccsId)
+      : [...currentIds, pccsId];
+
+    applyMultiSelectHighlight(nextIds);
+  };
+
+  const handleSetMultiSelectTiles = (pccsIds: string[], selected: boolean) => {
+    if (pccsIds.length === 0) {
+      return;
+    }
+
+    const idSet = new Set(pccsIds);
+    const currentIds = multiSelectedIdsRef.current;
+    const nextIds = selected
+      ? Array.from(new Set([...currentIds, ...pccsIds]))
+      : currentIds.filter((id) => !idSet.has(id));
+
+    applyMultiSelectHighlight(nextIds);
+  };
+
   return (
     <div className="app-shell">
       <main className="app-main">
@@ -550,11 +608,15 @@ export default function App() {
               setIsImageModalOpen((open) => {
                 const next = !open;
 
+                if (next) {
+                  setIsMultiSelectOpen(false);
+                }
+
                 if (isMobileView && next) {
                   setIsSettingsOpen(false);
                 }
 
-                setActiveOverlay(next ? "image" : isSettingsOpen && !isMobileView ? "settings" : null);
+                setActiveOverlay(next ? "image" : isSettingsOpen ? "settings" : isMultiSelectOpen ? "multi" : null);
                 return next;
               });
             }}
@@ -562,6 +624,34 @@ export default function App() {
             <span className="image-toggle-frame">
               <span className="image-toggle-sun" />
               <span className="image-toggle-mountain" />
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className={`selection-toggle ${isMultiSelectOpen ? "is-open" : ""}`}
+            aria-label={isMultiSelectOpen ? "複数選択強調を閉じる" : "複数選択強調を開く"}
+            aria-expanded={isMultiSelectOpen}
+            onPointerDown={() => deactivateViewerKeyboardControl()}
+            onClick={() => {
+              setIsMultiSelectOpen((open) => {
+                const next = !open;
+
+                if (next) {
+                  setIsImageModalOpen(false);
+                }
+
+                if (isMobileView && next) {
+                  setIsSettingsOpen(false);
+                }
+
+                setActiveOverlay(next ? "multi" : isSettingsOpen ? "settings" : isImageModalOpen ? "image" : null);
+                return next;
+              });
+            }}
+          >
+            <span className="selection-toggle-glyph" aria-hidden="true">
+              {isMultiSelectOpen ? "×" : "☑"}
             </span>
           </button>
 
@@ -579,9 +669,10 @@ export default function App() {
 
                 if (isMobileView && next) {
                   setIsImageModalOpen(false);
+                  setIsMultiSelectOpen(false);
                 }
 
-                setActiveOverlay(next ? "settings" : isImageModalOpen && !isMobileView ? "image" : null);
+                setActiveOverlay(next ? "settings" : isImageModalOpen ? "image" : isMultiSelectOpen ? "multi" : null);
                 return next;
               });
             }}
@@ -595,7 +686,7 @@ export default function App() {
             className={`settings-backdrop ${isSettingsOpen ? "is-open" : ""} ${activeOverlay === "settings" ? "is-front" : ""}`}
             onClick={() => {
               setIsSettingsOpen(false);
-              setActiveOverlay(isImageModalOpen ? "image" : null);
+              setActiveOverlay(isImageModalOpen ? "image" : isMultiSelectOpen ? "multi" : null);
             }}
           />
 
@@ -627,23 +718,27 @@ export default function App() {
               onToneChange={(value) => {
                 if (value) {
                   clearImageHighlight();
+                  clearMultiSelectHighlight();
                 }
 
                 setHighlight((current) => ({
                   toneValue: value,
                   hueValue: value ? "" : current.hueValue,
                   imageIds: value ? [] : current.imageIds,
+                  customIds: value ? [] : current.customIds,
                 }));
               }}
               onHueChange={(value) => {
                 if (value) {
                   clearImageHighlight();
+                  clearMultiSelectHighlight();
                 }
 
                 setHighlight((current) => ({
                   toneValue: value ? "" : current.toneValue,
                   hueValue: value,
                   imageIds: value ? [] : current.imageIds,
+                  customIds: value ? [] : current.customIds,
                 }));
               }}
               toneOptions={toneSelectOptions}
@@ -704,6 +799,7 @@ export default function App() {
                       }
 
                       setActiveOverlay("image");
+                      clearMultiSelectHighlight();
                       const nextClusters = current.clusters.map((cluster) =>
                         cluster.pccsId === pccsId ? { ...cluster, selected: !cluster.selected } : cluster,
                       );
@@ -712,6 +808,7 @@ export default function App() {
                         toneValue: "",
                         hueValue: "",
                         imageIds: nextClusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId),
+                        customIds: [],
                       });
 
                       return {
@@ -730,6 +827,39 @@ export default function App() {
                     setAllAnalysisClustersSelected(selected);
                   }}
                   onInspectCluster={selectAnalysisColorDetail}
+                />
+              </div>
+            </>
+          ) : null}
+
+          {isMultiSelectOpen ? (
+            <>
+              <div
+                className={`multi-select-backdrop ${activeOverlay === "multi" ? "is-front" : ""}`}
+                onClick={() => {
+                  setIsMultiSelectOpen(false);
+                  setActiveOverlay(isSettingsOpen ? "settings" : null);
+                }}
+              />
+              <div className={`multi-select-shell ${activeOverlay === "multi" ? "is-front" : ""}`}>
+                <MultiSelectHighlightPanel
+                  selectedIds={multiSelectedIds}
+                  onFocusPanel={() => {
+                    deactivateViewerKeyboardControl();
+                    setActiveOverlay("multi");
+                  }}
+                  onToggleTile={(pccsId) => {
+                    setActiveOverlay("multi");
+                    handleToggleMultiSelectTile(pccsId);
+                  }}
+                  onSetTilesSelected={(pccsIds, selected) => {
+                    setActiveOverlay("multi");
+                    handleSetMultiSelectTiles(pccsIds, selected);
+                  }}
+                  onClearAll={() => {
+                    setActiveOverlay("multi");
+                    applyMultiSelectHighlight([]);
+                  }}
                 />
               </div>
             </>

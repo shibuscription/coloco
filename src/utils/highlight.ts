@@ -4,6 +4,7 @@ export type HighlightState = {
   toneValue: string;
   hueValue: string;
   imageIds: string[];
+  customIds: string[];
 };
 
 const isToneMatch = (point: PccsRenderablePoint, toneValue: string): boolean => {
@@ -31,7 +32,7 @@ const isHueMatch = (point: PccsRenderablePoint, hueValue: string): boolean => {
 };
 
 export const hasActiveHighlight = (highlight: HighlightState): boolean =>
-  Boolean(highlight.toneValue || highlight.hueValue || highlight.imageIds.length > 0);
+  Boolean(highlight.toneValue || highlight.hueValue || highlight.imageIds.length > 0 || highlight.customIds.length > 0);
 
 export const isPointHighlighted = (point: PccsRenderablePoint, highlight: HighlightState): boolean => {
   if (!hasActiveHighlight(highlight)) {
@@ -41,7 +42,8 @@ export const isPointHighlighted = (point: PccsRenderablePoint, highlight: Highli
   return (
     isToneMatch(point, highlight.toneValue) ||
     isHueMatch(point, highlight.hueValue) ||
-    highlight.imageIds.includes(point.id)
+    highlight.imageIds.includes(point.id) ||
+    highlight.customIds.includes(point.id)
   );
 };
 
