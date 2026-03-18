@@ -1,58 +1,78 @@
 # PCCS Data Memo
 
 ## 参照元
-- 現在の有彩色・無彩色データの source of truth
+- 有彩色の表示色参照元
+  - `https://tee-room.info/color/tone-v.html`
+  - そのほか `tone-b.html` から `tone-dkg.html` までの同系列ページ
+- 有彩色の構造参照元
   - `https://kenchikushi999.com/pccs-conversion/`
+- 無彩色の参照元
+  - `https://spark-a.com/design/ct-achromatic-color/`
 
-## 採用方針
-- Phase 1 の採用点数と構成は維持する
+## 現在の採用方針
+- 採用点数と構成は Phase 1 のまま維持
   - `v` トーン: 24 色相
   - その他 11 トーン: 12 色相代表
   - 無彩色: 5 点
-  - 合計: `161` 点
-- 各採用点の中身は、新しい参照元の値へ更新する
-  - `munsellNotation`
-  - `rgb`
-  - `hex`
-  - `cmyk`
-- 描画座標の元は引き続き `PCCS記号` から抽出した `pccsLightness` / `pccsSaturation`
-- マンセル値は表示用補助データとして保持し、座標計算には使わない
+  - 合計 `161` 点
+- 今回の色データはハイブリッド方針
+  - 有彩色の `munsellNotation`: 新参照先を維持
+  - 有彩色の `pccsNotation` 内の明度値: 新参照先ベースを維持
+  - 有彩色の `rgb` / `hex` / `cmyk`: 旧参照先ベース
+  - 無彩色の `pccsNotation` / `munsellNotation` / `rgb` / `hex` / `cmyk`: spark-a ベース
 
-## PCCS記号の補正ルール
-- 末尾の彩度記号は引き続き `s` 付きの統一表記を使う
-- 今回は新しい参照元の `Munsell` 明度を優先し、`PCCS記号` 内の明度値もそれに合わせて補正している
-- つまり、`PCCS記号` は
-  - 色相コード: 従来の採用構成を維持
-  - 彩度値: 従来の採用構成を維持
-  - 明度値: 新しい参照元のマンセル明度へ更新
- という扱いにしている
+## 描画用と表示用
+- 描画用
+  - 色相
+  - `pccsLightness`
+  - `pccsSaturation`
+- 表示用
+  - `hex`
+  - `rgb`
+  - `cmyk`
+  - `munsellNotation`
+
+マンセル記号は情報表示用の補助データであり、座標計算には使いません。
+
+## PCCS 記号の扱い
+- アプリ内では末尾 `s` 付きの統一表記を使います
+- `pccsNotation` の明度値は、新参照先のマンセル明度に合わせて補正済みです
+- 今回の RGB / HEX / CMYK 差し替えでは、この明度補正は巻き戻していません
 
 ## CMYK について
-- 各色データに `cmyk` を追加している
+- 各色データに `cmyk` を追加しています
 - 形式は `{ c, m, y, k }`
-- `pccsPoints.ts` と `pccsAchromatic.ts` の両方で保持し、`pccsDisplayColors.ts` にも含めている
+- 色情報パネルや表示色辞書でも同じ値を参照します
 
 ## 無彩色データ
-- 無彩色は引き続き代表 5 点のみ採用する
+- 無彩色 5 点の構成自体は現行のままです
+- 無彩色だけは `spark-a` を source of truth としています
   - `W`
   - `ltGy`
   - `mGy`
   - `dkGy`
   - `Bk`
-- 参照元上のグレースケール値との対応は以下
-  - `W` ← `Gy-9.5`
-  - `ltGy` ← `Gy-8.5`
-  - `mGy` ← `Gy-6.5`
-  - `dkGy` ← `Gy-3.5`
-  - `Bk` ← `Gy-1.5`
+- 採用している無彩色値
+  - `W` → `n-9.5` / `N 9.5` / `#FFFFFF`
+  - `ltGy` → `n-8.5` / `N 8.5` / `#D6D6D6`
+  - `mGy` → `n-6.5` / `N 6.5` / `#A1A1A1`
+  - `dkGy` → `n-3.5` / `N 3.5` / `#545454`
+  - `Bk` → `n-1.5` / `N 1.5` / `#000000`
 
-## 実装メモ
-- `pccsPoints.ts`
-  - 現在アプリで採用している 156 点のみを保持
-  - 新しい参照元の `Munsell / RGB / CMYK / HEX` に全面更新
-- `pccsAchromatic.ts`
-  - 代表 5 点のみ保持
-  - 新しい参照元の `Munsell / RGB / CMYK / HEX` に更新
-- `types.ts`
-  - `CmykColor` を追加
-  - 有彩色・無彩色・表示色の型に `cmyk` を追加
+## 今回の更新内容
+- [pccsPoints.ts](./pccsPoints.ts)
+  - 有彩色 156 点の `rgb` / `hex` / `cmyk` を旧参照先ベースへ差し替え
+  - `munsellNotation` は新参照先のまま維持
+  - `pccsNotation` 内の明度値も新参照先ベースのまま維持
+- [types.ts](./types.ts)
+  - `CmykColor` を利用
+- [pccsDisplayColors.ts](./pccsDisplayColors.ts)
+  - `cmyk` を含む表示色辞書を利用
+- [pccsAchromatic.ts](./pccsAchromatic.ts)
+  - 無彩色 5 点の `pccsNotation` / `munsellNotation` / `rgb` / `hex` / `cmyk` を spark-a ベースへ更新
+
+## 補足
+- 旧参照先は RGB / CMYK を「知覚的に近しい任意の値」として掲載しているため、有彩色の表示色や画像解析の印象調整を優先する用途に向いています
+- 新参照先は有彩色のマンセル対応と明度の扱いを優先しています
+- spark-a は無彩色の PCCS 記号とマンセル表記を含めたまとまりが自然なので、無彩色だけは別系統で採用しています
+- そのため、coloco では「構造理解に効く値」と「見た目や表記に効く値」を分けて使っています
