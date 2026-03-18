@@ -39,7 +39,9 @@ type ColocoSceneProps = {
   selectedId: string | null;
   autoRotateEnabled: boolean;
   northLockEnabled: boolean;
-  guideLinesVisible: boolean;
+  showToneGuides: boolean;
+  showHueGuides: boolean;
+  showLightnessGuides: boolean;
   keyboardInput: {
     left: boolean;
     right: boolean;
@@ -56,7 +58,9 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
   selectedId,
   autoRotateEnabled,
   northLockEnabled,
-  guideLinesVisible,
+  showToneGuides,
+  showHueGuides,
+  showLightnessGuides,
   keyboardInput,
   onSelectPoint,
   onClearSelection,
@@ -122,7 +126,9 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
             points={points}
             selectedId={selectedId}
             highlight={highlight}
-            guideLinesVisible={guideLinesVisible}
+            showToneGuides={showToneGuides}
+            showHueGuides={showHueGuides}
+            showLightnessGuides={showLightnessGuides}
             onSelectPoint={onSelectPoint}
           />
         </group>

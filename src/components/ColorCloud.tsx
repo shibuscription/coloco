@@ -8,14 +8,29 @@ type ColorCloudProps = {
   points: PccsRenderablePoint[];
   selectedId: string | null;
   highlight: HighlightState;
-  guideLinesVisible: boolean;
+  showToneGuides: boolean;
+  showHueGuides: boolean;
+  showLightnessGuides: boolean;
   onSelectPoint: (id: string) => void;
 };
 
-export function ColorCloud({ points, selectedId, highlight, guideLinesVisible, onSelectPoint }: ColorCloudProps) {
+export function ColorCloud({
+  points,
+  selectedId,
+  highlight,
+  showToneGuides,
+  showHueGuides,
+  showLightnessGuides,
+  onSelectPoint,
+}: ColorCloudProps) {
   return (
     <>
-      <PccsGuideLines points={points} visible={guideLinesVisible} />
+      <PccsGuideLines
+        points={points}
+        showToneGuides={showToneGuides}
+        showHueGuides={showHueGuides}
+        showLightnessGuides={showLightnessGuides}
+      />
       {points.map((point) => (
         <ColorPoint
           key={point.id}

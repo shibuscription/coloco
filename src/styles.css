@@ -352,6 +352,42 @@ select {
   margin-top: 16px;
 }
 
+.guide-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.guide-controls-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.guide-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 7px 8px;
+  border: 1px solid rgba(82, 59, 29, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 252, 247, 0.68);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.guide-toggle input {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.guide-toggle span {
+  min-width: 0;
+}
+
 .custom-dropdown {
   position: relative;
 }
@@ -955,6 +991,17 @@ select {
   .panel-action-button {
     width: 42px;
     height: 42px;
+  }
+
+  .guide-controls-row {
+    gap: 6px;
+  }
+
+  .guide-toggle {
+    min-height: 36px;
+    padding: 7px 6px;
+    gap: 4px;
+    font-size: 0.72rem;
   }
 
   .info-overlay {

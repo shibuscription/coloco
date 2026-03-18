@@ -97,7 +97,9 @@ export default function App() {
   const [isViewerKeyboardActive, setIsViewerKeyboardActive] = useState(false);
   const [isAutoRotateEnabled, setIsAutoRotateEnabled] = useState(true);
   const [isNorthLockEnabled, setIsNorthLockEnabled] = useState(false);
-  const [isGuideLinesVisible, setIsGuideLinesVisible] = useState(false);
+  const [showToneGuides, setShowToneGuides] = useState(false);
+  const [showHueGuides, setShowHueGuides] = useState(false);
+  const [showLightnessGuides, setShowLightnessGuides] = useState(false);
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
 
@@ -424,13 +426,15 @@ export default function App() {
               ref={sceneControlsRef}
               points={points}
               highlight={highlight}
-              selectedId={selectedId}
-              autoRotateEnabled={isAutoRotateEnabled}
-              northLockEnabled={isNorthLockEnabled}
-              guideLinesVisible={isGuideLinesVisible}
-              keyboardInput={viewerKeyboardInput}
-              onSelectPoint={setSelectedId}
-              onClearSelection={() => setSelectedId(null)}
+            selectedId={selectedId}
+            autoRotateEnabled={isAutoRotateEnabled}
+            northLockEnabled={isNorthLockEnabled}
+            showToneGuides={showToneGuides}
+            showHueGuides={showHueGuides}
+            showLightnessGuides={showLightnessGuides}
+            keyboardInput={viewerKeyboardInput}
+            onSelectPoint={setSelectedId}
+            onClearSelection={() => setSelectedId(null)}
             />
           </div>
 
@@ -506,10 +510,14 @@ export default function App() {
               hueValue={highlight.hueValue}
               autoRotateEnabled={isAutoRotateEnabled}
               northLockEnabled={isNorthLockEnabled}
-              guideLinesVisible={isGuideLinesVisible}
+              showToneGuides={showToneGuides}
+              showHueGuides={showHueGuides}
+              showLightnessGuides={showLightnessGuides}
               onToggleAutoRotate={handleToggleAutoRotate}
               onToggleNorthLock={handleToggleNorthLock}
-              onToggleGuideLines={() => setIsGuideLinesVisible((current) => !current)}
+              onToggleToneGuides={() => setShowToneGuides((current) => !current)}
+              onToggleHueGuides={() => setShowHueGuides((current) => !current)}
+              onToggleLightnessGuides={() => setShowLightnessGuides((current) => !current)}
               onToneChange={(value) => {
                 if (value) {
                   clearImageHighlight();
