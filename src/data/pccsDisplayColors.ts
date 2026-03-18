@@ -9,6 +9,7 @@ export const pccsDisplayColors: Record<string, PccsDisplayColor> = [...pccsPoint
     id: point.id,
     hex: point.hex,
     rgb: point.rgb,
+    cmyk: point.cmyk,
   };
 
   return acc;

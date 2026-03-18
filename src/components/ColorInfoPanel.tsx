@@ -13,7 +13,7 @@ type Point = {
   y: number;
 };
 
-type CopyableFieldKey = "pccs" | "munsell" | "hex" | "rgb";
+type CopyableFieldKey = "pccs" | "munsell" | "hex" | "rgb" | "cmyk";
 
 const SWIPE_THRESHOLD_PX = 42;
 
@@ -119,6 +119,7 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
 
   const showDetails = !isMobileView || isMobileExpanded;
   const rgbText = `${selectedPoint.rgb.r}, ${selectedPoint.rgb.g}, ${selectedPoint.rgb.b}`;
+  const cmykText = `${selectedPoint.cmyk.c}, ${selectedPoint.cmyk.m}, ${selectedPoint.cmyk.y}, ${selectedPoint.cmyk.k}`;
 
   const handleCopy = async (field: CopyableFieldKey, value: string) => {
     try {
@@ -143,6 +144,7 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
     { key: "munsell", label: "マンセル記号", value: selectedPoint.munsellNotation ?? "-" },
     { key: "hex", label: "HEX", value: selectedPoint.hex },
     { key: "rgb", label: "RGB", value: rgbText },
+    { key: "cmyk", label: "CMYK", value: cmykText },
   ];
 
   return (
@@ -190,7 +192,7 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
                 event.stopPropagation();
               }}
             >
-              <span className={`color-chip-toggle-icon ${showDetails ? "is-open" : ""}`}>⌃</span>
+              <span className={`color-chip-toggle-icon ${showDetails ? "is-open" : ""}`}>▾</span>
             </button>
           ) : null}
         </div>

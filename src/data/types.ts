@@ -4,6 +4,13 @@ export type RgbColor = {
   b: number;
 };
 
+export type CmykColor = {
+  c: number;
+  m: number;
+  y: number;
+  k: number;
+};
+
 export type PccsHueDefinition = {
   hueIndex24: number;
   hueCode24: string;
@@ -43,6 +50,7 @@ export type ChromaticPccsPoint = {
   munsellNotation: string;
   hex: string;
   rgb: RgbColor;
+  cmyk: CmykColor;
 };
 
 export type AchromaticToneCode = "W" | "ltGy" | "mGy" | "dkGy" | "Bk";
@@ -58,10 +66,12 @@ export type AchromaticPccsPoint = {
   munsellNotation?: string;
   hex: string;
   rgb: RgbColor;
+  cmyk: CmykColor;
 };
 
 export type PccsDisplayColor = {
   id: string;
   hex: string;
   rgb: RgbColor;
+  cmyk: CmykColor;
 };
