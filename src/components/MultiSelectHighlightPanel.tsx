@@ -11,6 +11,8 @@ type MultiSelectHighlightPanelProps = {
   onFocusPanel: () => void;
 };
 
+type ListSelectableTone = ChromaticToneCode | "achromatic";
+
 type Point = { x: number; y: number };
 
 type SelectableTile = {
@@ -24,6 +26,12 @@ type TileRow = {
   tiles: SelectableTile[];
 };
 
+type ToneListOption = {
+  value: ListSelectableTone;
+  label: string;
+  hex: string;
+};
+
 const LONG_PRESS_DELAY_MS = 360;
 const LONG_PRESS_CANCEL_MOVE_THRESHOLD = 10;
 const AUTO_SCROLL_TOP_EDGE_THRESHOLD = 44;
@@ -32,6 +40,7 @@ const AUTO_SCROLL_STEP_PX = 9;
 
 const EVEN_HUE_INDICES = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24] as const;
 const ODD_HUE_INDICES = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23] as const;
+const ALL_HUE_INDICES = Array.from({ length: 24 }, (_, index) => index + 1);
 const ACHROMATIC_ORDER: AchromaticToneCode[] = ["W", "ltGy", "mGy", "dkGy", "Bk"];
 const CHROMATIC_ROW_ORDER: Array<
   { key: string; toneCode: ChromaticToneCode; hueIndices: readonly number[] }
@@ -49,6 +58,22 @@ const CHROMATIC_ROW_ORDER: Array<
   { key: "s", toneCode: "s", hueIndices: EVEN_HUE_INDICES },
   { key: "d", toneCode: "d", hueIndices: EVEN_HUE_INDICES },
   { key: "g", toneCode: "g", hueIndices: EVEN_HUE_INDICES },
+];
+
+const TONE_LIST_OPTIONS: ToneListOption[] = [
+  { value: "v", label: "v（ビビッド）", hex: "#f2d533" },
+  { value: "b", label: "b（ブライト）", hex: "#f0d56a" },
+  { value: "s", label: "s（ストロング）", hex: "#d6b743" },
+  { value: "dp", label: "dp（ディープ）", hex: "#8b6f23" },
+  { value: "lt", label: "lt（ライト）", hex: "#f4e6a5" },
+  { value: "sf", label: "sf（ソフト）", hex: "#d9c78e" },
+  { value: "d", label: "d（ダル）", hex: "#a89157" },
+  { value: "dk", label: "dk（ダーク）", hex: "#6c5c2a" },
+  { value: "p", label: "p（ペール）", hex: "#f7efc8" },
+  { value: "ltg", label: "ltg（ライトグレイッシュ）", hex: "#d9d0a7" },
+  { value: "g", label: "g（グレイッシュ）", hex: "#9a9272" },
+  { value: "dkg", label: "dkg（ダークグレイッシュ）", hex: "#5d5642" },
+  { value: "achromatic", label: "無彩色", hex: "#a1a1a1" },
 ];
 
 const getDistance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
@@ -103,6 +128,8 @@ export function MultiSelectHighlightPanel({
   onFocusPanel,
 }: MultiSelectHighlightPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const listPickerRef = useRef<HTMLDivElement>(null);
+  const dropdownMenuRef = useRef<HTMLDivElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
@@ -115,8 +142,46 @@ export function MultiSelectHighlightPanel({
     lastClientY: number;
   } | null>(null);
   const [isBulkSelecting, setIsBulkSelecting] = useState(false);
+  const [listPickerStage, setListPickerStage] = useState<"tone" | "color" | null>(null);
+  const [pendingTone, setPendingTone] = useState<ListSelectableTone | null>(null);
+  const [dropdownMaxHeight, setDropdownMaxHeight] = useState<number | undefined>(undefined);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const tileRows = useMemo(() => buildTileRows(), []);
+  const chromaticMap = useMemo(
+    () => new Map(pccsPoints.map((point) => [`${point.toneCode}-${point.hueIndex24}`, point] as const)),
+    [],
+  );
+  const achromaticMap = useMemo(
+    () => new Map(pccsAchromatic.map((point) => [point.toneCode, point] as const)),
+    [],
+  );
+
+  const listSelectableColorOptions = useMemo(() => {
+    if (!pendingTone) {
+      return [];
+    }
+
+    if (pendingTone === "achromatic") {
+      return ACHROMATIC_ORDER.map((toneCode) => achromaticMap.get(toneCode))
+        .filter((point): point is NonNullable<typeof point> => Boolean(point))
+        .map((point) => ({
+          id: point.id,
+          label: point.toneCode,
+          hex: point.hex,
+        }));
+    }
+
+    const hueIndices = pendingTone === "v" ? ALL_HUE_INDICES : [...EVEN_HUE_INDICES];
+
+    return hueIndices
+      .map((hueIndex24) => chromaticMap.get(`${pendingTone}-${hueIndex24}`))
+      .filter((point): point is NonNullable<typeof point> => Boolean(point))
+      .map((point) => ({
+        id: point.id,
+        label: `${point.toneCode}${point.hueIndex24}`,
+        hex: point.hex,
+      }));
+  }, [achromaticMap, chromaticMap, pendingTone]);
 
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current !== null) {
@@ -240,6 +305,47 @@ export function MultiSelectHighlightPanel({
     };
   }, []);
 
+  useEffect(() => {
+    const handlePointerDownOutside = (event: PointerEvent) => {
+      if (!listPickerRef.current?.contains(event.target as Node)) {
+        setListPickerStage(null);
+        setPendingTone(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDownOutside);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDownOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!listPickerStage) {
+      setDropdownMaxHeight(undefined);
+      return;
+    }
+
+    const updateDropdownMaxHeight = () => {
+      const menuElement = dropdownMenuRef.current;
+      if (!menuElement) {
+        return;
+      }
+
+      const rect = menuElement.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const availableHeight = Math.max(180, Math.floor(viewportHeight - rect.top - 16));
+      setDropdownMaxHeight(availableHeight);
+    };
+
+    const frameId = window.requestAnimationFrame(updateDropdownMaxHeight);
+    window.addEventListener("resize", updateDropdownMaxHeight);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", updateDropdownMaxHeight);
+    };
+  }, [listPickerStage, pendingTone]);
+
   const handleTilePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, tileId: string) => {
     onFocusPanel();
 
@@ -315,18 +421,124 @@ export function MultiSelectHighlightPanel({
     onToggleTile(tileId);
   };
 
+  const handleOpenListPicker = () => {
+    onFocusPanel();
+    setPendingTone(null);
+    setListPickerStage((current) => (current === "tone" ? null : "tone"));
+  };
+
+  const handleToneSelection = (toneValue: ListSelectableTone | null) => {
+    onFocusPanel();
+
+    if (toneValue === null) {
+      setPendingTone(null);
+      setListPickerStage(null);
+      return;
+    }
+
+    setPendingTone(toneValue);
+    setListPickerStage("color");
+  };
+
+  const handleColorToggle = (tileId: string) => {
+    onFocusPanel();
+    onToggleTile(tileId);
+  };
+
+  const handleBackToToneSelection = () => {
+    onFocusPanel();
+    setPendingTone(null);
+    setListPickerStage("tone");
+  };
+
   return (
     <div className="multi-select-card" onPointerDown={onFocusPanel}>
       <div className="multi-select-body">
         <div className="multi-select-header">
-          <button
-            type="button"
-            className="secondary-button secondary-button-small"
-            disabled={selectedIds.length === 0}
-            onClick={onClearAll}
-          >
-            全解除
-          </button>
+          <div ref={listPickerRef} className="multi-select-header-actions">
+            <div className="multi-select-list-picker">
+              <button
+                type="button"
+                className="secondary-button secondary-button-small"
+                onClick={handleOpenListPicker}
+              >
+                リストから選択
+              </button>
+
+              {listPickerStage === "tone" ? (
+                <div
+                  ref={dropdownMenuRef}
+                  className="custom-dropdown-menu multi-select-dropdown-menu"
+                  role="listbox"
+                  aria-label="トーン選択"
+                  style={{ maxHeight: dropdownMaxHeight }}
+                >
+                  <button type="button" className="custom-dropdown-option" onClick={() => handleToneSelection(null)}>
+                    <span>キャンセル</span>
+                  </button>
+                  {TONE_LIST_OPTIONS.map((toneOption) => (
+                    <button
+                      key={toneOption.value}
+                      type="button"
+                      className="custom-dropdown-option"
+                      style={{
+                        background: toneOption.hex,
+                        color: getContrastTextColor(toneOption.hex),
+                      }}
+                      onClick={() => handleToneSelection(toneOption.value)}
+                    >
+                      <span>{toneOption.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {listPickerStage === "color" ? (
+                <div
+                  ref={dropdownMenuRef}
+                  className="custom-dropdown-menu multi-select-dropdown-menu"
+                  role="listbox"
+                  aria-label="色ID選択"
+                  style={{ maxHeight: dropdownMaxHeight }}
+                >
+                  <button type="button" className="custom-dropdown-option" onClick={handleBackToToneSelection}>
+                    <span>戻る</span>
+                  </button>
+                  {listSelectableColorOptions.map((colorOption) => {
+                    const isSelected = selectedIdSet.has(colorOption.id);
+                    return (
+                      <button
+                        key={colorOption.id}
+                      type="button"
+                      className={`custom-dropdown-option ${isSelected ? "is-selected" : ""}`}
+                      style={{
+                        background: colorOption.hex,
+                        color: getContrastTextColor(colorOption.hex),
+                        }}
+                        onClick={() => handleColorToggle(colorOption.id)}
+                      >
+                        <span>{colorOption.label}</span>
+                        {isSelected ? (
+                          <span className="analysis-check" aria-hidden="true">
+                            ✔
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              className="secondary-button secondary-button-small"
+              disabled={selectedIds.length === 0}
+              onClick={onClearAll}
+            >
+              全解除
+            </button>
+          </div>
         </div>
 
         <div
@@ -359,7 +571,7 @@ export function MultiSelectHighlightPanel({
                       </span>
                       {isSelected ? (
                         <span className="analysis-check" aria-hidden="true">
-                          ✓
+                          ✔
                         </span>
                       ) : null}
                     </button>

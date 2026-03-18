@@ -3,7 +3,7 @@ import { pccsHues } from "../data";
 import { CHROMA_SCALE, VERTICAL_SCALE } from "../constants/viewConfig";
 
 const hueGuideRadius = 10 * CHROMA_SCALE;
-const lightnessTicks = [1.5, 3.5, 5.5, 7.5, 9.5];
+const lightnessTicks = [2, 3, 4, 5, 6, 7, 8, 9];
 const sceneGuideHueLabels = pccsHues.map((hue) => ({
   hueIndex24: hue.hueIndex24,
   hueCode24: hue.hueCode24,

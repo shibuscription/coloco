@@ -121,6 +121,14 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
   const rgbText = `${selectedPoint.rgb.r}, ${selectedPoint.rgb.g}, ${selectedPoint.rgb.b}`;
   const cmykText = `${selectedPoint.cmyk.c}, ${selectedPoint.cmyk.m}, ${selectedPoint.cmyk.y}, ${selectedPoint.cmyk.k}`;
 
+  const toggleMobileDetails = () => {
+    if (!isMobileView) {
+      return;
+    }
+
+    setIsMobileExpanded((current) => !current);
+  };
+
   const handleCopy = async (field: CopyableFieldKey, value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -140,8 +148,8 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
   };
 
   const copyRows: Array<{ key: CopyableFieldKey; label: string; value: string }> = [
-    { key: "pccs", label: "PCCS記号", value: selectedPoint.pccsNotation ?? "-" },
-    { key: "munsell", label: "マンセル記号", value: selectedPoint.munsellNotation ?? "-" },
+    { key: "pccs", label: "PCCS", value: selectedPoint.pccsNotation ?? "-" },
+    { key: "munsell", label: "Munsell", value: selectedPoint.munsellNotation ?? "-" },
     { key: "hex", label: "HEX", value: selectedPoint.hex },
     { key: "rgb", label: "RGB", value: rgbText },
     { key: "cmyk", label: "CMYK", value: cmykText },
@@ -173,6 +181,7 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
           background: selectedPoint.hex,
           color: getContrastTextColor(selectedPoint.hex),
         }}
+        onClick={() => toggleMobileDetails()}
       >
         <div className="color-chip-content">
           <strong>{selectedPoint.label}</strong>
@@ -180,19 +189,19 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
             <button
               type="button"
               className="color-chip-toggle"
-              aria-label={showDetails ? "色情報を折りたたむ" : "色情報を展開する"}
+              aria-label={showDetails ? "色情報を閉じる" : "色情報を開く"}
               aria-expanded={showDetails}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                setIsMobileExpanded((current) => !current);
+                toggleMobileDetails();
               }}
               onPointerDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
               }}
             >
-              <span className={`color-chip-toggle-icon ${showDetails ? "is-open" : ""}`}>▾</span>
+              <span className={`color-chip-toggle-icon ${showDetails ? "is-open" : ""}`}>▼</span>
             </button>
           ) : null}
         </div>
@@ -221,7 +230,7 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
                       event.stopPropagation();
                     }}
                   >
-                    {copiedField === row.key ? "✓" : "⧉"}
+                    {copiedField === row.key ? "✔" : "⧉"}
                   </button>
                 </div>
               </dd>

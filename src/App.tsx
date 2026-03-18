@@ -171,6 +171,50 @@ export default function App() {
     return [emptyOption, ...mapped];
   }, []);
 
+  const getIdsForToneHighlight = (toneValue: string): string[] => {
+    if (!toneValue) {
+      return [];
+    }
+
+    return points
+      .filter((point) =>
+        toneValue === "achromatic"
+          ? point.kind === "achromatic"
+          : point.kind === "chromatic" && point.toneCode === toneValue,
+      )
+      .map((point) => point.id);
+  };
+
+  const getIdsForHueHighlight = (hueValue: string): string[] => {
+    if (!hueValue) {
+      return [];
+    }
+
+    return points
+      .filter((point) => point.kind === "achromatic" || String(point.hueIndex24) === hueValue)
+      .map((point) => point.id);
+  };
+
+  const getIdsForHighlightState = (nextHighlight: HighlightState): string[] => {
+    if (nextHighlight.customIds.length > 0) {
+      return nextHighlight.customIds;
+    }
+
+    if (nextHighlight.imageIds.length > 0) {
+      return nextHighlight.imageIds;
+    }
+
+    if (nextHighlight.toneValue) {
+      return getIdsForToneHighlight(nextHighlight.toneValue);
+    }
+
+    if (nextHighlight.hueValue) {
+      return getIdsForHueHighlight(nextHighlight.hueValue);
+    }
+
+    return [];
+  };
+
   const clearImageHighlight = () => {
     setAnalysis((current) =>
       current
@@ -183,14 +227,6 @@ export default function App() {
     setHighlight((current) => ({
       ...current,
       imageIds: [],
-    }));
-  };
-
-  const clearMultiSelectHighlight = () => {
-    setMultiSelectedIds([]);
-    setHighlight((current) => ({
-      ...current,
-      customIds: [],
     }));
   };
 
@@ -231,13 +267,15 @@ export default function App() {
         clusters: nextClusters,
       };
 
-      setHighlight({
+      const nextHighlight = {
         toneValue: "",
         hueValue: "",
         imageIds: nextClusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId),
         customIds: [],
-      });
-      setMultiSelectedIds([]);
+      };
+
+      setHighlight(nextHighlight);
+      setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
 
       return nextResolvedAnalysis;
     });
@@ -254,13 +292,15 @@ export default function App() {
         selected,
       }));
 
-      setHighlight({
+      const nextHighlight = {
         toneValue: "",
         hueValue: "",
         imageIds: selected ? nextClusters.map((cluster) => cluster.pccsId) : [],
         customIds: [],
-      });
-      setMultiSelectedIds([]);
+      };
+
+      setHighlight(nextHighlight);
+      setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
 
       return {
         ...current,
@@ -285,13 +325,15 @@ export default function App() {
         idSet.has(cluster.pccsId) ? { ...cluster, selected } : cluster,
       );
 
-      setHighlight({
+      const nextHighlight = {
         toneValue: "",
         hueValue: "",
         imageIds: nextClusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId),
         customIds: [],
-      });
-      setMultiSelectedIds([]);
+      };
+
+      setHighlight(nextHighlight);
+      setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
 
       return {
         ...current,
@@ -459,6 +501,7 @@ export default function App() {
     setAnalysis(restoreState.analysis);
     setSourceImageName(restoreState.sourceImageName);
     setHighlight(restoreState.highlight);
+    setMultiSelectedIds(getIdsForHighlightState(restoreState.highlight));
     cameraRestoreStateRef.current = null;
   };
 
@@ -487,10 +530,14 @@ export default function App() {
 
       return "";
     });
-    setHighlight((current) => ({
-      ...current,
-      imageIds: [],
-    }));
+    setHighlight((current) => {
+      const nextHighlight = {
+        ...current,
+        imageIds: [],
+      };
+      setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
+      return nextHighlight;
+    });
   };
 
   const handlePickedImage = async (file: File) => {
@@ -718,28 +765,52 @@ export default function App() {
               onToneChange={(value) => {
                 if (value) {
                   clearImageHighlight();
-                  clearMultiSelectHighlight();
+                  const nextHighlight = {
+                    toneValue: value,
+                    hueValue: "",
+                    imageIds: [],
+                    customIds: [],
+                  };
+                  setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
+                  setHighlight(nextHighlight);
+                  return;
                 }
 
-                setHighlight((current) => ({
-                  toneValue: value,
-                  hueValue: value ? "" : current.hueValue,
-                  imageIds: value ? [] : current.imageIds,
-                  customIds: value ? [] : current.customIds,
-                }));
+                setHighlight((current) => {
+                  const nextHighlight = {
+                    toneValue: value,
+                    hueValue: value ? "" : current.hueValue,
+                    imageIds: value ? [] : current.imageIds,
+                    customIds: value ? [] : current.customIds,
+                  };
+                  setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
+                  return nextHighlight;
+                });
               }}
               onHueChange={(value) => {
                 if (value) {
                   clearImageHighlight();
-                  clearMultiSelectHighlight();
+                  const nextHighlight = {
+                    toneValue: "",
+                    hueValue: value,
+                    imageIds: [],
+                    customIds: [],
+                  };
+                  setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
+                  setHighlight(nextHighlight);
+                  return;
                 }
 
-                setHighlight((current) => ({
-                  toneValue: value ? "" : current.toneValue,
-                  hueValue: value,
-                  imageIds: value ? [] : current.imageIds,
-                  customIds: value ? [] : current.customIds,
-                }));
+                setHighlight((current) => {
+                  const nextHighlight = {
+                    toneValue: value ? "" : current.toneValue,
+                    hueValue: value,
+                    imageIds: value ? [] : current.imageIds,
+                    customIds: value ? [] : current.customIds,
+                  };
+                  setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
+                  return nextHighlight;
+                });
               }}
               toneOptions={toneSelectOptions}
               hueOptions={numberedHueSelectOptions}
@@ -799,17 +870,19 @@ export default function App() {
                       }
 
                       setActiveOverlay("image");
-                      clearMultiSelectHighlight();
                       const nextClusters = current.clusters.map((cluster) =>
                         cluster.pccsId === pccsId ? { ...cluster, selected: !cluster.selected } : cluster,
                       );
 
-                      setHighlight({
+                      const nextHighlight = {
                         toneValue: "",
                         hueValue: "",
                         imageIds: nextClusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId),
                         customIds: [],
-                      });
+                      };
+
+                      setHighlight(nextHighlight);
+                      setMultiSelectedIds(getIdsForHighlightState(nextHighlight));
 
                       return {
                         ...current,

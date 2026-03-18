@@ -41,7 +41,7 @@ const latitudeToneOrder: ChromaticToneCode[] = [
 
 const meridianHueIndices = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24];
 const meridianToneOrder: Array<ChromaticToneCode | "W" | "Bk"> = ["W", "p", "lt", "b", "v", "dp", "dk", "dkg", "Bk"];
-const lightnessLevels = [2, 3, 4, 5, 6, 7, 8];
+const lightnessLevels = [2, 3, 4, 5, 6, 7, 8, 9];
 
 const toCurvePoints = (vectors: Vector3[], closed: boolean, divisions: number): [number, number, number][] => {
   if (vectors.length < (closed ? 3 : 2)) {

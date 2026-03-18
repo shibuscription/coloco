@@ -3,3 +3,4 @@ dist/
 *.tsbuildinfo
 .vscode/
 .DS_Store
+.firebase/

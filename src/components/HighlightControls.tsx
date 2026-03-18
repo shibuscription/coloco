@@ -128,7 +128,7 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
       >
         <span>{selectedOption.label}</span>
         <span className="custom-dropdown-caret" aria-hidden="true">
-          ▾
+          ▼
         </span>
       </button>
 
@@ -148,7 +148,7 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
                 }}
               >
                 <span>{option.label}</span>
-                {option.value === value ? <span aria-hidden="true">✓</span> : null}
+                {option.value === value ? <span aria-hidden="true">✔</span> : null}
               </button>
             );
           })}
@@ -182,7 +182,11 @@ export function HighlightControls({
 }: HighlightControlsProps) {
   const isAutoRotateActive = autoRotateMode !== "off";
   const autoRotateLabel =
-    autoRotateMode === "cw" ? "自動回転: 右回り" : autoRotateMode === "ccw" ? "自動回転: 左回り" : "自動回転: 停止";
+    autoRotateMode === "cw"
+      ? "自動回転: 右回り"
+      : autoRotateMode === "ccw"
+        ? "自動回転: 左回り"
+        : "自動回転: 停止";
 
   return (
     <div className="highlight-controls">
@@ -201,12 +205,42 @@ export function HighlightControls({
           <button
             type="button"
             className={`panel-action-button ${northLockEnabled ? "is-active" : ""}`}
-            aria-label={northLockEnabled ? "基準方位固定をオフにする" : "基準方位に固定"}
-            title={northLockEnabled ? "基準方位固定: ON" : "基準方位固定: OFF"}
+            aria-label={northLockEnabled ? "基準方位に固定する" : "基準方位固定を解除する"}
+            title={northLockEnabled ? "基準方位固定 ON" : "基準方位固定 OFF"}
             onClick={onToggleNorthLock}
           >
             <CompassIcon />
           </button>
+        </div>
+      </div>
+
+      <div className="control-group">
+        <HighlightDropdown label="トーン強調" value={toneValue} options={toneOptions} onChange={onToneChange} />
+      </div>
+
+      <div className="control-group">
+        <HighlightDropdown label="色相強調" value={hueValue} options={hueOptions} onChange={onHueChange} />
+      </div>
+
+      <div className="control-group">
+        <div className="guide-controls">
+          <span className="custom-dropdown-label">補助線表示</span>
+          <div className="guide-controls-row">
+            <label className="guide-toggle">
+              <input type="checkbox" checked={showToneGuides} onChange={onToggleToneGuides} />
+              <span>同一トーン</span>
+            </label>
+
+            <label className="guide-toggle">
+              <input type="checkbox" checked={showHueGuides} onChange={onToggleHueGuides} />
+              <span>同一色相</span>
+            </label>
+
+            <label className="guide-toggle">
+              <input type="checkbox" checked={showLightnessGuides} onChange={onToggleLightnessGuides} />
+              <span>同一明度</span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -238,41 +272,11 @@ export function HighlightControls({
             className="rotation-speed-slider"
             min={0.5}
             max={6}
-            step={0.1}
+            step={0.5}
             value={autoRotateRpm}
             disabled={autoRotateMode === "off"}
             onChange={(event) => onAutoRotateRpmChange(Number(event.target.value))}
           />
-        </div>
-      </div>
-
-      <div className="control-group">
-        <HighlightDropdown label="トーン強調" value={toneValue} options={toneOptions} onChange={onToneChange} />
-      </div>
-
-      <div className="control-group">
-        <HighlightDropdown label="色相強調" value={hueValue} options={hueOptions} onChange={onHueChange} />
-      </div>
-
-      <div className="control-group">
-        <div className="guide-controls">
-          <span className="custom-dropdown-label">補助線表示</span>
-          <div className="guide-controls-row">
-            <label className="guide-toggle">
-              <input type="checkbox" checked={showToneGuides} onChange={onToggleToneGuides} />
-              <span>同一トーン</span>
-            </label>
-
-            <label className="guide-toggle">
-              <input type="checkbox" checked={showHueGuides} onChange={onToggleHueGuides} />
-              <span>同一色相</span>
-            </label>
-
-            <label className="guide-toggle">
-              <input type="checkbox" checked={showLightnessGuides} onChange={onToggleLightnessGuides} />
-              <span>同一明度</span>
-            </label>
-          </div>
         </div>
       </div>
     </div>
