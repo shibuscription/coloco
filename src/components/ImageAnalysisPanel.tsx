@@ -12,6 +12,10 @@ type ImageAnalysisPanelProps = {
   sourceImageName: string;
   previewUrl: string;
   onPickImage: (file: File) => void;
+  onCameraModeStart: () => void;
+  onCameraModeCancel: () => void;
+  onAnalyzeLiveFrame: (imageData: ImageData) => void;
+  onCaptureImage: (file: File) => void;
   onClearImage: () => void;
   onToggleCluster: (pccsId: string) => void;
   onSetClustersSelected: (pccsIds: string[], selected: boolean) => void;
@@ -32,6 +36,8 @@ const LONG_PRESS_CANCEL_MOVE_THRESHOLD = 10;
 const AUTO_SCROLL_TOP_EDGE_THRESHOLD = 44;
 const AUTO_SCROLL_BOTTOM_EDGE_THRESHOLD = 88;
 const AUTO_SCROLL_STEP_PX = 9;
+const LIVE_ANALYSIS_INTERVAL_MS = 500;
+const LIVE_ANALYSIS_MAX_DIMENSION = 96;
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
@@ -61,11 +67,98 @@ const formatRatioPercent = (ratio: number): string => {
   return `${percent.toFixed(1)}%`;
 };
 
+type CameraFacingMode = "environment" | "user";
+
+const waitForVideoReady = (videoElement: HTMLVideoElement): Promise<void> =>
+  new Promise((resolve, reject) => {
+    let timeoutId: number | null = null;
+
+    const cleanup = () => {
+      videoElement.removeEventListener("loadedmetadata", checkReady);
+      videoElement.removeEventListener("loadeddata", checkReady);
+      videoElement.removeEventListener("canplay", checkReady);
+      videoElement.removeEventListener("playing", checkReady);
+      videoElement.removeEventListener("error", handleError);
+
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+
+    const checkReady = () => {
+      if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0 && videoElement.readyState >= 2) {
+        cleanup();
+        resolve();
+      }
+    };
+
+    const handleError = () => {
+      cleanup();
+      reject(new Error("ライブ映像の準備に失敗しました。"));
+    };
+
+    videoElement.addEventListener("loadedmetadata", checkReady);
+    videoElement.addEventListener("loadeddata", checkReady);
+    videoElement.addEventListener("canplay", checkReady);
+    videoElement.addEventListener("playing", checkReady);
+    videoElement.addEventListener("error", handleError);
+
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("ライブ映像の準備がタイムアウトしました。"));
+    }, 4000);
+
+    checkReady();
+  });
+
+const getCoverCropRect = (
+  sourceWidth: number,
+  sourceHeight: number,
+  frameWidth: number,
+  frameHeight: number,
+): { sx: number; sy: number; sw: number; sh: number } => {
+  const sourceAspect = sourceWidth / sourceHeight;
+  const frameAspect = frameWidth / frameHeight;
+
+  if (Math.abs(sourceAspect - frameAspect) < 0.0001) {
+    return {
+      sx: 0,
+      sy: 0,
+      sw: sourceWidth,
+      sh: sourceHeight,
+    };
+  }
+
+  if (sourceAspect > frameAspect) {
+    const sw = sourceHeight * frameAspect;
+    const sx = (sourceWidth - sw) / 2;
+    return {
+      sx,
+      sy: 0,
+      sw,
+      sh: sourceHeight,
+    };
+  }
+
+  const sh = sourceWidth / frameAspect;
+  const sy = (sourceHeight - sh) / 2;
+  return {
+    sx: 0,
+    sy,
+    sw: sourceWidth,
+    sh,
+  };
+};
+
 export function ImageAnalysisPanel({
   analysis,
   sourceImageName,
   previewUrl,
   onPickImage,
+  onCameraModeStart,
+  onCameraModeCancel,
+  onAnalyzeLiveFrame,
+  onCaptureImage,
   onClearImage,
   onToggleCluster,
   onSetClustersSelected,
@@ -75,7 +168,14 @@ export function ImageAnalysisPanel({
 }: ImageAnalysisPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const tilesScrollRef = useRef<HTMLDivElement>(null);
+  const liveAnalysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const liveAnalysisIntervalRef = useRef<number | null>(null);
+  const isAnalyzingFrameRef = useRef(false);
+  const videoReadyRef = useRef(false);
   const tileRefs = useRef(new Map<string, HTMLButtonElement>());
   const clickTimerRef = useRef<number | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
@@ -101,6 +201,10 @@ export function ImageAnalysisPanel({
     typeof window !== "undefined" ? window.matchMedia("(max-width: 980px)").matches : false,
   );
   const [isBulkSelecting, setIsBulkSelecting] = useState(false);
+  const [cameraMode, setCameraMode] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const [currentFacingMode, setCurrentFacingMode] = useState<CameraFacingMode>("environment");
+  const [cameraSessionKey, setCameraSessionKey] = useState(0);
 
   const clusters = analysis?.clusters ?? [];
   const areAllClustersSelected = clusters.length > 0 && clusters.every((cluster) => cluster.selected);
@@ -118,6 +222,213 @@ export function ImageAnalysisPanel({
     mediaQuery.addEventListener("change", updateMatch);
     return () => mediaQuery.removeEventListener("change", updateMatch);
   }, []);
+
+  const stopCameraStream = () => {
+    if (liveAnalysisIntervalRef.current !== null) {
+      window.clearInterval(liveAnalysisIntervalRef.current);
+      liveAnalysisIntervalRef.current = null;
+    }
+
+    const stream = cameraStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+
+      const videoElement = videoRef.current;
+      if (videoElement) {
+        videoElement.pause();
+        videoElement.srcObject = null;
+      }
+
+    isAnalyzingFrameRef.current = false;
+    videoReadyRef.current = false;
+  };
+
+  const analyzeLiveFrame = async () => {
+    const videoElement = videoRef.current;
+    const previewElement = viewportRef.current;
+    if (!videoElement || !previewElement || !videoReadyRef.current || isAnalyzingFrameRef.current) {
+      return;
+    }
+
+    if (
+      videoElement.videoWidth === 0 ||
+      videoElement.videoHeight === 0 ||
+      previewElement.clientWidth === 0 ||
+      previewElement.clientHeight === 0
+    ) {
+      return;
+    }
+
+    isAnalyzingFrameRef.current = true;
+
+    try {
+      const canvas = liveAnalysisCanvasRef.current ?? document.createElement("canvas");
+      liveAnalysisCanvasRef.current = canvas;
+
+      const cropRect = getCoverCropRect(
+        videoElement.videoWidth,
+        videoElement.videoHeight,
+        previewElement.clientWidth,
+        previewElement.clientHeight,
+      );
+      const maxDimension = LIVE_ANALYSIS_MAX_DIMENSION;
+      const scaleRatio = Math.min(1, maxDimension / Math.max(cropRect.sw, cropRect.sh));
+      const width = Math.max(1, Math.round(cropRect.sw * scaleRatio));
+      const height = Math.max(1, Math.round(cropRect.sh * scaleRatio));
+
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+
+      if (!context) {
+        throw new Error("ライブ解析用のCanvasコンテキストを取得できませんでした。");
+      }
+
+      context.drawImage(
+        videoElement,
+        cropRect.sx,
+        cropRect.sy,
+        cropRect.sw,
+        cropRect.sh,
+        0,
+        0,
+        width,
+        height,
+      );
+      const imageData = context.getImageData(0, 0, width, height);
+      onAnalyzeLiveFrame(imageData);
+    } catch (error) {
+      setCameraError(error instanceof Error ? error.message : "ライブ解析に失敗しました。");
+    } finally {
+      isAnalyzingFrameRef.current = false;
+    }
+  };
+
+  const startLiveAnalysisLoop = () => {
+    if (liveAnalysisIntervalRef.current !== null) {
+      window.clearInterval(liveAnalysisIntervalRef.current);
+    }
+
+    liveAnalysisIntervalRef.current = window.setInterval(() => {
+      void analyzeLiveFrame();
+    }, LIVE_ANALYSIS_INTERVAL_MS);
+  };
+
+  const startCameraMode = async (
+    facingMode: CameraFacingMode = currentFacingMode,
+    { preserveCameraMode = false }: { preserveCameraMode?: boolean } = {},
+  ) => {
+    stopCameraStream();
+    setCameraError("");
+    videoReadyRef.current = false;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facingMode },
+        },
+        audio: false,
+      });
+
+      cameraStreamRef.current = stream;
+      setCurrentFacingMode(facingMode);
+      setCameraMode(true);
+      setCameraSessionKey((current) => current + 1);
+      if (!preserveCameraMode) {
+        onCameraModeStart();
+      }
+    } catch (error) {
+      stopCameraStream();
+      setCameraMode(false);
+      setCameraError(error instanceof Error ? error.message : "カメラを起動できませんでした。");
+      if (!preserveCameraMode) {
+        onCameraModeCancel();
+      }
+    }
+  };
+
+  const cancelCameraMode = () => {
+    stopCameraStream();
+    setCameraMode(false);
+    setCameraError("");
+    onCameraModeCancel();
+  };
+
+  const captureFromCamera = async () => {
+    const videoElement = videoRef.current;
+    const previewElement = viewportRef.current;
+    if (
+      !videoElement ||
+      !previewElement ||
+      !videoReadyRef.current ||
+      videoElement.videoWidth === 0 ||
+      videoElement.videoHeight === 0 ||
+      previewElement.clientWidth === 0 ||
+      previewElement.clientHeight === 0
+    ) {
+      setCameraError("撮影できる状態ではありません。");
+      return;
+    }
+
+    try {
+      const canvas = captureCanvasRef.current ?? document.createElement("canvas");
+      captureCanvasRef.current = canvas;
+      const cropRect = getCoverCropRect(
+        videoElement.videoWidth,
+        videoElement.videoHeight,
+        previewElement.clientWidth,
+        previewElement.clientHeight,
+      );
+      canvas.width = Math.max(1, Math.round(cropRect.sw));
+      canvas.height = Math.max(1, Math.round(cropRect.sh));
+
+      const context = canvas.getContext("2d");
+      if (!context) {
+        throw new Error("撮影用のCanvasコンテキストを取得できませんでした。");
+      }
+
+      context.drawImage(
+        videoElement,
+        cropRect.sx,
+        cropRect.sy,
+        cropRect.sw,
+        cropRect.sh,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((nextBlob) => {
+          if (nextBlob) {
+            resolve(nextBlob);
+            return;
+          }
+          reject(new Error("撮影画像の生成に失敗しました。"));
+        }, "image/jpeg", 0.92);
+      });
+
+      const file = new File([blob], `coloco-camera-${Date.now()}.jpg`, {
+        type: "image/jpeg",
+        lastModified: Date.now(),
+      });
+
+      stopCameraStream();
+      setCameraMode(false);
+      setCameraError("");
+      await onCaptureImage(file);
+    } catch (error) {
+      setCameraError(error instanceof Error ? error.message : "撮影に失敗しました。");
+    }
+  };
+
+  const toggleFacingMode = async () => {
+    const nextFacingMode: CameraFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+    await startCameraMode(nextFacingMode, { preserveCameraMode: true });
+  };
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -152,7 +463,58 @@ export function ImageAnalysisPanel({
   }, [previewUrl]);
 
   useEffect(() => {
+    if (!cameraMode) {
+      return;
+    }
+
+    const videoElement = videoRef.current;
+    const stream = cameraStreamRef.current;
+    if (!videoElement || !stream) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const setupVideo = async () => {
+      try {
+        videoElement.srcObject = stream;
+        await videoElement.play();
+        await waitForVideoReady(videoElement);
+        if (cancelled) {
+          return;
+        }
+
+        if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+          throw new Error("切り替え後のカメラ映像サイズを取得できませんでした。");
+        }
+
+        videoReadyRef.current = true;
+        void analyzeLiveFrame();
+        startLiveAnalysisLoop();
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        stopCameraStream();
+        setCameraMode(false);
+        setCameraError(error instanceof Error ? error.message : "ライブ映像の準備に失敗しました。");
+        onCameraModeCancel();
+      }
+    };
+
+    void setupVideo();
+
     return () => {
+      cancelled = true;
+      if (cameraStreamRef.current === stream) {
+        stopCameraStream();
+      }
+    };
+  }, [cameraMode, cameraSessionKey]);
+
+  useEffect(() => {
+    return () => {
+      stopCameraStream();
       if (clickTimerRef.current !== null) {
         window.clearTimeout(clickTimerRef.current);
       }
@@ -298,6 +660,13 @@ export function ImageAnalysisPanel({
       return;
     }
 
+    if (cameraMode) {
+      stopCameraStream();
+      setCameraMode(false);
+      setCameraError("");
+      onCameraModeCancel();
+    }
+
     onFocusPanel();
     onPickImage(file);
     event.target.value = "";
@@ -412,7 +781,7 @@ export function ImageAnalysisPanel({
   };
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
-    if (!previewUrl) {
+    if (!previewUrl || cameraMode) {
       return;
     }
 
@@ -423,7 +792,7 @@ export function ImageAnalysisPanel({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!previewUrl) {
+    if (!previewUrl || cameraMode) {
       return;
     }
 
@@ -462,7 +831,7 @@ export function ImageAnalysisPanel({
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!previewUrl || !pointersRef.current.has(event.pointerId)) {
+    if (!previewUrl || cameraMode || !pointersRef.current.has(event.pointerId)) {
       return;
     }
 
@@ -515,7 +884,7 @@ export function ImageAnalysisPanel({
   };
 
   const finishPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!pointersRef.current.has(event.pointerId)) {
+    if (cameraMode || !pointersRef.current.has(event.pointerId)) {
       return;
     }
 
@@ -553,6 +922,11 @@ export function ImageAnalysisPanel({
     event.stopPropagation();
     onFocusPanel();
 
+    if (cameraMode) {
+      event.preventDefault();
+      return;
+    }
+
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       event.preventDefault();
@@ -580,6 +954,12 @@ export function ImageAnalysisPanel({
   };
 
   const handleTilePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, pccsId: string) => {
+    if (cameraMode) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (event.pointerType !== "touch") {
       return;
     }
@@ -666,9 +1046,9 @@ export function ImageAnalysisPanel({
         <div className="analysis-fixed-section">
           <div
             ref={viewportRef}
-            className={`analysis-preview ${previewUrl ? "has-image" : ""}`}
+            className={`analysis-preview ${previewUrl && !cameraMode ? "has-image" : ""} ${cameraMode ? "is-live" : ""}`}
             onClick={() => {
-              if (!previewUrl) {
+              if (!previewUrl && !cameraMode) {
                 openFilePicker();
               }
             }}
@@ -678,16 +1058,20 @@ export function ImageAnalysisPanel({
             onPointerUp={finishPointer}
             onPointerCancel={finishPointer}
           >
-            {previewUrl ? (
+            {(previewUrl && !cameraMode) || cameraMode ? (
               <button
                 type="button"
                 className="analysis-preview-clear"
-                aria-label="画像をクリア"
-                title="画像をクリア"
+                aria-label={cameraMode ? "カメラを終了" : "画像をクリア"}
+                title={cameraMode ? "カメラを終了" : "画像をクリア"}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
                   onFocusPanel();
+                  if (cameraMode) {
+                    cancelCameraMode();
+                    return;
+                  }
                   onClearImage();
                 }}
                 onPointerDown={(event) => {
@@ -698,7 +1082,31 @@ export function ImageAnalysisPanel({
                 ×
               </button>
             ) : null}
-            {previewUrl && metrics ? (
+            {cameraMode && isMobileView ? (
+              <button
+                type="button"
+                className="analysis-preview-switch"
+                aria-label="前面カメラと背面カメラを切り替える"
+                title="カメラ切り替え"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onFocusPanel();
+                  void toggleFacingMode();
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                ↺
+              </button>
+            ) : null}
+            {cameraMode ? (
+              <>
+                <video ref={videoRef} className="analysis-preview-video" autoPlay muted playsInline />
+              </>
+            ) : previewUrl && metrics ? (
               <div
                 className="analysis-preview-stage"
                 style={{
@@ -728,12 +1136,31 @@ export function ImageAnalysisPanel({
               <button
                 type="button"
                 className="secondary-button secondary-button-small analysis-action-button"
+                onClick={() => {
+                  onFocusPanel();
+                  if (cameraMode) {
+                    void captureFromCamera();
+                    return;
+                  }
+                  void startCameraMode();
+                }}
+                title={cameraMode ? "撮影" : "カメラ起動"}
+                aria-label={cameraMode ? "撮影" : "カメラ起動"}
+              >
+                <span className="analysis-action-icon" aria-hidden="true">
+                  {cameraMode ? "●" : "◎"}
+                </span>
+                <span className="analysis-action-label">{cameraMode ? "撮影" : "カメラ起動"}</span>
+              </button>
+              <button
+                type="button"
+                className="secondary-button secondary-button-small analysis-action-button"
                 onClick={openFilePicker}
                 title="画像を選ぶ"
                 aria-label="画像を選ぶ"
               >
                 <span className="analysis-action-icon" aria-hidden="true">
-                  ▣
+                  ⤴
                 </span>
                 <span className="analysis-action-label">画像を選ぶ</span>
               </button>
@@ -759,6 +1186,8 @@ export function ImageAnalysisPanel({
               />
             </div>
           </div>
+
+          {cameraError ? <p className="analysis-camera-error">{cameraError}</p> : null}
 
           <div className="analysis-selection-bar" aria-hidden="true">
             {selectedClusters.length > 0 && selectedRatioTotal > 0 ? (
@@ -795,6 +1224,7 @@ export function ImageAnalysisPanel({
                   className={`analysis-tile ${cluster.selected ? "is-selected" : ""} ${
                     referencedPccsId === cluster.pccsId ? "is-referenced" : ""
                   }`}
+                  disabled={cameraMode}
                   data-pccs-id={cluster.pccsId}
                   style={{
                     background: cluster.hex,

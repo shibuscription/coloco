@@ -6,7 +6,7 @@ import { ImageAnalysisPanel } from "./components/ImageAnalysisPanel";
 import { Wordmark } from "./components/Wordmark";
 import type { SceneControlsHandle } from "./components/SceneControls";
 import { pccsAchromatic, pccsPoints, pccsRepresentativeHues12 } from "./data";
-import { analyzeImageToPccs, createPccsLabPalette } from "./utils/imageClassification";
+import { analyzeImageDataToPccs, analyzeImageToPccs, createPccsLabPalette } from "./utils/imageClassification";
 import type { ImagePccsAnalysis } from "./utils/imageClassification";
 import type { HighlightState } from "./utils/highlight";
 import { getSwipeNavigationTargetId } from "./utils/pccsNavigation";
@@ -80,6 +80,13 @@ export default function App() {
   const sceneControlsRef = useRef<SceneControlsHandle | null>(null);
   const viewerKeyboardInputRef = useRef<ViewerKeyboardInput>(INITIAL_VIEWER_KEYBOARD_INPUT);
   const isViewerKeyboardActiveRef = useRef(false);
+  const cameraRestoreStateRef = useRef<{
+    analysis: ImagePccsAnalysis | null;
+    sourceImageName: string;
+    previewUrl: string;
+    highlight: HighlightState;
+  } | null>(null);
+  const liveSelectionInitializedRef = useRef(false);
   const points = useMemo(() => createRenderablePoints(pccsPoints, pccsAchromatic), []);
   const pccsLabPalette = useMemo(() => createPccsLabPalette(points), [points]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -165,6 +172,42 @@ export default function App() {
       ...current,
       imageIds: [],
     }));
+  };
+
+  const applyImageAnalysisResult = (
+    nextAnalysis: ImagePccsAnalysis,
+    {
+      preserveExistingSelection,
+    }: {
+      preserveExistingSelection: boolean;
+    },
+  ) => {
+    setAnalysis((current) => {
+      const selectedIds = preserveExistingSelection && current
+        ? new Set(current.clusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId))
+        : null;
+
+      const nextClusters =
+        selectedIds === null
+          ? nextAnalysis.clusters
+          : nextAnalysis.clusters.map((cluster) => ({
+              ...cluster,
+              selected: selectedIds.has(cluster.pccsId),
+            }));
+
+      const nextResolvedAnalysis = {
+        ...nextAnalysis,
+        clusters: nextClusters,
+      };
+
+      setHighlight({
+        toneValue: "",
+        hueValue: "",
+        imageIds: nextClusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId),
+      });
+
+      return nextResolvedAnalysis;
+    });
   };
 
   const setAllAnalysisClustersSelected = (selected: boolean) => {
@@ -357,6 +400,45 @@ export default function App() {
     setSelectedId(pccsId);
   };
 
+  const beginCameraMode = () => {
+    cameraRestoreStateRef.current = {
+      analysis,
+      sourceImageName,
+      previewUrl,
+      highlight,
+    };
+    liveSelectionInitializedRef.current = false;
+  };
+
+  const cancelCameraMode = () => {
+    const restoreState = cameraRestoreStateRef.current;
+    liveSelectionInitializedRef.current = false;
+
+    if (!restoreState) {
+      return;
+    }
+
+    setAnalysis(restoreState.analysis);
+    setSourceImageName(restoreState.sourceImageName);
+    setHighlight(restoreState.highlight);
+    cameraRestoreStateRef.current = null;
+  };
+
+  const commitCameraCapture = async (file: File) => {
+    cameraRestoreStateRef.current = null;
+    liveSelectionInitializedRef.current = false;
+    await handlePickedImage(file);
+  };
+
+  const applyLiveAnalysisFrame = (imageData: ImageData) => {
+    const nextAnalysis = analyzeImageDataToPccs(imageData, pccsLabPalette, {
+      maxDimension: 96,
+      alphaThreshold: 16,
+    });
+    applyImageAnalysisResult(nextAnalysis, { preserveExistingSelection: false });
+    liveSelectionInitializedRef.current = true;
+  };
+
   const clearLoadedImage = () => {
     setAnalysis(null);
     setSourceImageName("");
@@ -371,6 +453,21 @@ export default function App() {
       ...current,
       imageIds: [],
     }));
+  };
+
+  const handlePickedImage = async (file: File) => {
+    const nextPreviewUrl = URL.createObjectURL(file);
+
+    setPreviewUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return nextPreviewUrl;
+    });
+
+    const nextAnalysis = await analyzeImageToPccs(file, pccsLabPalette);
+    setSourceImageName(file.name);
+    applyImageAnalysisResult(nextAnalysis, { preserveExistingSelection: false });
   };
 
   const handleInfoPanelSwipeNavigate = (direction: "left" | "right" | "up" | "down") => {
@@ -573,25 +670,23 @@ export default function App() {
                   }}
                   onPickImage={async (file) => {
                     setActiveOverlay("image");
-                    const nextPreviewUrl = URL.createObjectURL(file);
-
-                    setPreviewUrl((current) => {
-                      if (current) {
-                        URL.revokeObjectURL(current);
-                      }
-                      return nextPreviewUrl;
-                    });
-
-                    const nextAnalysis = await analyzeImageToPccs(file, pccsLabPalette);
-                    setAnalysis(nextAnalysis);
-                    setSourceImageName(file.name);
-                    setHighlight({
-                      toneValue: "",
-                      hueValue: "",
-                      imageIds: nextAnalysis.clusters
-                        .filter((cluster) => cluster.selected)
-                        .map((cluster) => cluster.pccsId),
-                    });
+                    await handlePickedImage(file);
+                  }}
+                  onCameraModeStart={() => {
+                    setActiveOverlay("image");
+                    beginCameraMode();
+                  }}
+                  onCameraModeCancel={() => {
+                    setActiveOverlay("image");
+                    cancelCameraMode();
+                  }}
+                  onAnalyzeLiveFrame={(imageData) => {
+                    setActiveOverlay("image");
+                    applyLiveAnalysisFrame(imageData);
+                  }}
+                  onCaptureImage={async (file) => {
+                    setActiveOverlay("image");
+                    await commitCameraCapture(file);
                   }}
                   onToggleCluster={(pccsId) =>
                     setAnalysis((current) => {

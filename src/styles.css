@@ -563,9 +563,21 @@ select {
   background-color: rgba(255, 250, 241, 0.62);
 }
 
+.analysis-preview.is-live {
+  background: rgba(255, 250, 241, 0.62);
+  cursor: default;
+}
+
 .analysis-preview-placeholder {
   width: 100%;
   height: 100%;
+}
+
+.analysis-preview-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .analysis-preview-clear {
@@ -578,6 +590,26 @@ select {
   justify-content: center;
   width: 30px;
   height: 30px;
+  border: 1px solid rgba(82, 59, 29, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.86);
+  color: #2b251d;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 18px rgba(43, 37, 29, 0.14);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.analysis-preview-switch {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
   border: 1px solid rgba(82, 59, 29, 0.18);
   border-radius: 999px;
   background: rgba(255, 252, 247, 0.86);
@@ -646,8 +678,14 @@ select {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.analysis-camera-error {
+  margin: 10px 2px 0;
+  font-size: 0.84rem;
+  color: #8a3d2f;
 }
 
 .analysis-selection-bar {

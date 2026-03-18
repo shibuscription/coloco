@@ -203,6 +203,32 @@ export const analyzeImageToPccs = async (
   const image = await loadImage(file);
   const resized = getResizedDimensions(image.naturalWidth, image.naturalHeight, maxDimension);
   const sourceImageData = getImageDataFromImage(image);
+  return analyzeImageDataToPccs(sourceImageData, palette, {
+    maxDimension,
+    alphaThreshold,
+    targetWidth: resized.width,
+    targetHeight: resized.height,
+  });
+};
+
+type AnalyzeImageDataOptions = AnalyzeImageOptions & {
+  targetWidth?: number;
+  targetHeight?: number;
+};
+
+export const analyzeImageDataToPccs = (
+  sourceImageData: ImageData,
+  palette: PccsLabEntry[],
+  options: AnalyzeImageDataOptions = {},
+): ImagePccsAnalysis => {
+  const { maxDimension = 384, alphaThreshold = 16 } = options;
+  const resized =
+    options.targetWidth && options.targetHeight
+      ? {
+          width: options.targetWidth,
+          height: options.targetHeight,
+        }
+      : getResizedDimensions(sourceImageData.width, sourceImageData.height, maxDimension);
   const data = resizeImageForAnalysisByMajority(
     sourceImageData,
     resized.width,
