@@ -13,6 +13,7 @@ import { getSwipeNavigationTargetId } from "./utils/pccsNavigation";
 import { createRenderablePoints } from "./utils/pccs3d";
 
 type OverlayKind = "settings" | "image" | null;
+type AutoRotateMode = "cw" | "ccw" | "off";
 
 type ToneOption = {
   value: string;
@@ -21,34 +22,34 @@ type ToneOption = {
 };
 
 const toneOptions: ToneOption[] = [
-  { value: "v", shortLabel: "v", fullLabel: "ビビッド" },
-  { value: "b", shortLabel: "b", fullLabel: "ブライト" },
-  { value: "s", shortLabel: "s", fullLabel: "ストロング" },
-  { value: "dp", shortLabel: "dp", fullLabel: "ディープ" },
-  { value: "lt", shortLabel: "lt", fullLabel: "ライト" },
-  { value: "sf", shortLabel: "sf", fullLabel: "ソフト" },
-  { value: "d", shortLabel: "d", fullLabel: "ダル" },
-  { value: "dk", shortLabel: "dk", fullLabel: "ダーク" },
-  { value: "p", shortLabel: "p", fullLabel: "ペール" },
-  { value: "ltg", shortLabel: "ltg", fullLabel: "ライトグレイッシュ" },
-  { value: "g", shortLabel: "g", fullLabel: "グレイッシュ" },
-  { value: "dkg", shortLabel: "dkg", fullLabel: "ダークグレイッシュ" },
-  { value: "achromatic", shortLabel: "", fullLabel: "無彩色" },
+  { value: "v", shortLabel: "v", fullLabel: "\u30d3\u30d3\u30c3\u30c9" },
+  { value: "b", shortLabel: "b", fullLabel: "\u30d6\u30e9\u30a4\u30c8" },
+  { value: "s", shortLabel: "s", fullLabel: "\u30b9\u30c8\u30ed\u30f3\u30b0" },
+  { value: "dp", shortLabel: "dp", fullLabel: "\u30c7\u30a3\u30fc\u30d7" },
+  { value: "lt", shortLabel: "lt", fullLabel: "\u30e9\u30a4\u30c8" },
+  { value: "sf", shortLabel: "sf", fullLabel: "\u30bd\u30d5\u30c8" },
+  { value: "d", shortLabel: "d", fullLabel: "\u30c0\u30eb" },
+  { value: "dk", shortLabel: "dk", fullLabel: "\u30c0\u30fc\u30af" },
+  { value: "p", shortLabel: "p", fullLabel: "\u30da\u30fc\u30eb" },
+  { value: "ltg", shortLabel: "ltg", fullLabel: "\u30e9\u30a4\u30c8\u30b0\u30ec\u30a4\u30c3\u30b7\u30e5" },
+  { value: "g", shortLabel: "g", fullLabel: "\u30b0\u30ec\u30a4\u30c3\u30b7\u30e5" },
+  { value: "dkg", shortLabel: "dkg", fullLabel: "\u30c0\u30fc\u30af\u30b0\u30ec\u30a4\u30c3\u30b7\u30e5" },
+  { value: "achromatic", shortLabel: "", fullLabel: "\u7121\u5f69\u8272" },
 ];
 
 const hueNameMap: Record<string, string> = {
-  R: "赤",
-  rO: "赤みの橙",
-  yO: "黄みの橙",
-  Y: "黄",
-  YG: "黄緑",
-  G: "緑",
-  BG: "青緑",
-  gB: "緑みの青",
-  B: "青",
-  V: "青紫",
-  P: "紫",
-  RP: "赤紫",
+  R: "\u8d64",
+  rO: "\u8d64\u6a59",
+  yO: "\u9ec4\u6a59",
+  Y: "\u9ec4",
+  YG: "\u9ec4\u7dd1",
+  G: "\u7dd1",
+  BG: "\u9752\u7dd1",
+  gB: "\u7dd1\u307f\u306e\u9752",
+  B: "\u9752",
+  V: "\u7d2b",
+  P: "\u7d2b",
+  RP: "\u8d64\u7d2b",
 };
 
 const INITIAL_HIGHLIGHT: HighlightState = {
@@ -102,7 +103,9 @@ export default function App() {
   );
   const [viewerKeyboardInput, setViewerKeyboardInput] = useState<ViewerKeyboardInput>(INITIAL_VIEWER_KEYBOARD_INPUT);
   const [isViewerKeyboardActive, setIsViewerKeyboardActive] = useState(false);
-  const [isAutoRotateEnabled, setIsAutoRotateEnabled] = useState(true);
+  const [sphereScale, setSphereScale] = useState(1);
+  const [autoRotateMode, setAutoRotateMode] = useState<AutoRotateMode>("cw");
+  const [autoRotateRpm, setAutoRotateRpm] = useState(1.0);
   const [isNorthLockEnabled, setIsNorthLockEnabled] = useState(false);
   const [showToneGuides, setShowToneGuides] = useState(false);
   const [showHueGuides, setShowHueGuides] = useState(false);
@@ -123,7 +126,7 @@ export default function App() {
   const toneSelectOptions = useMemo(() => {
     const emptyOption = {
       value: "",
-      label: "選択しない",
+      label: "\u9078\u629e\u3057\u306a\u3044",
       swatchHex: "#f3efe7",
     };
 
@@ -143,16 +146,16 @@ export default function App() {
     return [emptyOption, ...mapped];
   }, []);
 
-  const hueSelectOptions = useMemo(() => {
+  const numberedHueSelectOptions = useMemo(() => {
     const emptyOption = {
       value: "",
-      label: "選択しない",
+      label: "\u9078\u629e\u3057\u306a\u3044",
       swatchHex: "#f3efe7",
     };
 
     const mapped = pccsRepresentativeHues12.map((hue) => ({
-      value: hue.hueCode24,
-      label: `${hue.hueCode24}（${hueNameMap[hue.hueCode24] ?? hue.hueCode24}）`,
+      value: String(hue.hueIndex24),
+      label: `${hue.hueIndex24}:${hue.hueCode24}（${hueNameMap[hue.hueCode24] ?? hue.hueCode24}）`,
       swatchHex: pccsPoints.find((point) => point.toneCode === "v" && point.hueIndex24 === hue.hueIndex24)?.hex ?? "#ddd3bf",
     }));
 
@@ -479,9 +482,9 @@ export default function App() {
   };
 
   const handleToggleAutoRotate = () => {
-    setIsAutoRotateEnabled((current) => {
-      const next = !current;
-      if (next) {
+    setAutoRotateMode((current) => {
+      const next: AutoRotateMode = current === "cw" ? "ccw" : current === "ccw" ? "off" : "cw";
+      if (next !== "off") {
         setIsNorthLockEnabled(false);
       }
       return next;
@@ -492,7 +495,7 @@ export default function App() {
     setIsNorthLockEnabled((current) => {
       const next = !current;
       if (next) {
-        setIsAutoRotateEnabled(false);
+        setAutoRotateMode("off");
       }
       return next;
     });
@@ -523,11 +526,13 @@ export default function App() {
               ref={sceneControlsRef}
               points={points}
               highlight={highlight}
-            selectedId={selectedId}
-            autoRotateEnabled={isAutoRotateEnabled}
-            northLockEnabled={isNorthLockEnabled}
-            showToneGuides={showToneGuides}
-            showHueGuides={showHueGuides}
+              selectedId={selectedId}
+              sphereScale={sphereScale}
+              autoRotateMode={autoRotateMode}
+              autoRotateRpm={autoRotateRpm}
+              northLockEnabled={isNorthLockEnabled}
+              showToneGuides={showToneGuides}
+              showHueGuides={showHueGuides}
             showLightnessGuides={showLightnessGuides}
             keyboardInput={viewerKeyboardInput}
             onSelectPoint={setSelectedId}
@@ -538,7 +543,7 @@ export default function App() {
           <button
             type="button"
             className={`image-toggle ${isImageModalOpen ? "is-open" : ""}`}
-            aria-label={isImageModalOpen ? "画像解析を閉じる" : "画像解析を開く"}
+            aria-label={isImageModalOpen ? "\u753b\u50cf\u89e3\u6790\u3092\u9589\u3058\u308b" : "\u753b\u50cf\u89e3\u6790\u3092\u958b\u304f"}
             aria-expanded={isImageModalOpen}
             onPointerDown={() => deactivateViewerKeyboardControl()}
             onClick={() => {
@@ -565,7 +570,7 @@ export default function App() {
           <button
             type="button"
             className={`menu-toggle ${isSettingsOpen ? "is-open" : ""}`}
-            aria-label={isSettingsOpen ? "設定を閉じる" : "設定を開く"}
+            aria-label={isSettingsOpen ? "\u8a2d\u5b9a\u3092\u9589\u3058\u308b" : "\u8a2d\u5b9a\u3092\u958b\u304f"}
             aria-expanded={isSettingsOpen}
             onPointerDown={() => deactivateViewerKeyboardControl()}
             onClick={() => {
@@ -605,12 +610,16 @@ export default function App() {
             <HighlightControls
               toneValue={highlight.toneValue}
               hueValue={highlight.hueValue}
-              autoRotateEnabled={isAutoRotateEnabled}
+              sphereScale={sphereScale}
+              autoRotateMode={autoRotateMode}
+              autoRotateRpm={autoRotateRpm}
               northLockEnabled={isNorthLockEnabled}
               showToneGuides={showToneGuides}
               showHueGuides={showHueGuides}
               showLightnessGuides={showLightnessGuides}
               onToggleAutoRotate={handleToggleAutoRotate}
+              onSphereScaleChange={setSphereScale}
+              onAutoRotateRpmChange={setAutoRotateRpm}
               onToggleNorthLock={handleToggleNorthLock}
               onToggleToneGuides={() => setShowToneGuides((current) => !current)}
               onToggleHueGuides={() => setShowHueGuides((current) => !current)}
@@ -638,7 +647,7 @@ export default function App() {
                 }));
               }}
               toneOptions={toneSelectOptions}
-              hueOptions={hueSelectOptions}
+              hueOptions={numberedHueSelectOptions}
             />
           </section>
 

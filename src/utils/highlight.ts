@@ -27,7 +27,7 @@ const isHueMatch = (point: PccsRenderablePoint, hueValue: string): boolean => {
     return true;
   }
 
-  return point.hueCode24 === hueValue;
+  return String(point.hueIndex24) === hueValue;
 };
 
 export const hasActiveHighlight = (highlight: HighlightState): boolean =>

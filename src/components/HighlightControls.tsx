@@ -11,12 +11,16 @@ type HighlightControlsProps = {
   hueValue: string;
   onToneChange: (value: string) => void;
   onHueChange: (value: string) => void;
-  autoRotateEnabled: boolean;
+  sphereScale: number;
+  autoRotateMode: "cw" | "ccw" | "off";
+  autoRotateRpm: number;
   northLockEnabled: boolean;
   showToneGuides: boolean;
   showHueGuides: boolean;
   showLightnessGuides: boolean;
+  onSphereScaleChange: (value: number) => void;
   onToggleAutoRotate: () => void;
+  onAutoRotateRpmChange: (value: number) => void;
   onToggleNorthLock: () => void;
   onToggleToneGuides: () => void;
   onToggleHueGuides: () => void;
@@ -52,6 +56,50 @@ function CompassIcon() {
   );
 }
 
+function RotateCwIcon() {
+  return (
+    <svg className="panel-action-button-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M19 8.2V4.6M19 4.6H15.4M19 4.6L15.6 8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18.1 11.2A6.7 6.7 0 1 1 12 5.3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function RotateCcwIcon() {
+  return (
+    <svg className="panel-action-button-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M5 8.2V4.6M5 4.6H8.6M5 4.6L8.4 8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.9 11.2A6.7 6.7 0 1 0 12 5.3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -80,7 +128,7 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
       >
         <span>{selectedOption.label}</span>
         <span className="custom-dropdown-caret" aria-hidden="true">
-          ▼
+          ▾
         </span>
       </button>
 
@@ -115,12 +163,16 @@ export function HighlightControls({
   hueValue,
   onToneChange,
   onHueChange,
-  autoRotateEnabled,
+  sphereScale,
+  autoRotateMode,
+  autoRotateRpm,
   northLockEnabled,
   showToneGuides,
   showHueGuides,
   showLightnessGuides,
+  onSphereScaleChange,
   onToggleAutoRotate,
+  onAutoRotateRpmChange,
   onToggleNorthLock,
   onToggleToneGuides,
   onToggleHueGuides,
@@ -128,31 +180,69 @@ export function HighlightControls({
   toneOptions,
   hueOptions,
 }: HighlightControlsProps) {
+  const isAutoRotateActive = autoRotateMode !== "off";
+  const autoRotateLabel =
+    autoRotateMode === "cw" ? "自動回転: 右回り" : autoRotateMode === "ccw" ? "自動回転: 左回り" : "自動回転: 停止";
+
   return (
     <div className="highlight-controls">
       <div className="panel-action-row" aria-label="3Dビュー操作">
         <div className="panel-action-buttons">
           <button
             type="button"
-            className={`panel-action-button ${autoRotateEnabled ? "is-active" : ""}`}
-            aria-label={autoRotateEnabled ? "自動回転をオフにする" : "自動回転をオンにする"}
-            title={autoRotateEnabled ? "Rotate ON" : "Rotate OFF"}
+            className={`panel-action-button ${isAutoRotateActive ? "is-active" : ""}`}
+            aria-label={autoRotateLabel}
+            title={autoRotateLabel}
             onClick={onToggleAutoRotate}
           >
-            <span className="panel-action-button-icon" aria-hidden="true">
-              ↻
-            </span>
+            {autoRotateMode === "ccw" ? <RotateCcwIcon /> : <RotateCwIcon />}
           </button>
 
           <button
             type="button"
             className={`panel-action-button ${northLockEnabled ? "is-active" : ""}`}
             aria-label={northLockEnabled ? "基準方位固定をオフにする" : "基準方位に固定"}
-            title={northLockEnabled ? "基準方位固定 ON" : "基準方位固定 OFF"}
+            title={northLockEnabled ? "基準方位固定: ON" : "基準方位固定: OFF"}
             onClick={onToggleNorthLock}
           >
             <CompassIcon />
           </button>
+        </div>
+      </div>
+
+      <div className="control-group">
+        <div className="rotation-speed-control">
+          <div className="rotation-speed-header">
+            <span className="custom-dropdown-label">球サイズ</span>
+          </div>
+          <input
+            type="range"
+            className="rotation-speed-slider"
+            min={0.5}
+            max={1}
+            step={0.05}
+            value={sphereScale}
+            onChange={(event) => onSphereScaleChange(Number(event.target.value))}
+          />
+        </div>
+      </div>
+
+      <div className="control-group">
+        <div className="rotation-speed-control">
+          <div className="rotation-speed-header">
+            <span className="custom-dropdown-label">回転速度</span>
+            <span className="rotation-speed-value">{autoRotateRpm.toFixed(1)} rpm</span>
+          </div>
+          <input
+            type="range"
+            className="rotation-speed-slider"
+            min={0.5}
+            max={6}
+            step={0.1}
+            value={autoRotateRpm}
+            disabled={autoRotateMode === "off"}
+            onChange={(event) => onAutoRotateRpmChange(Number(event.target.value))}
+          />
         </div>
       </div>
 

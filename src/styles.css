@@ -352,6 +352,34 @@ select {
   margin-top: 16px;
 }
 
+.rotation-speed-control {
+  display: grid;
+  gap: 8px;
+}
+
+.rotation-speed-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rotation-speed-value {
+  font-size: 0.82rem;
+  color: #6a563e;
+  white-space: nowrap;
+}
+
+.rotation-speed-slider {
+  width: 100%;
+  accent-color: #bc8540;
+}
+
+.rotation-speed-slider:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .guide-controls {
   display: grid;
   gap: 8px;

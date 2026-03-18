@@ -37,7 +37,9 @@ type ColocoSceneProps = {
   points: PccsRenderablePoint[];
   highlight: HighlightState;
   selectedId: string | null;
-  autoRotateEnabled: boolean;
+  sphereScale: number;
+  autoRotateMode: "cw" | "ccw" | "off";
+  autoRotateRpm: number;
   northLockEnabled: boolean;
   showToneGuides: boolean;
   showHueGuides: boolean;
@@ -56,7 +58,9 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
   points,
   highlight,
   selectedId,
-  autoRotateEnabled,
+  sphereScale,
+  autoRotateMode,
+  autoRotateRpm,
   northLockEnabled,
   showToneGuides,
   showHueGuides,
@@ -125,6 +129,7 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
           <ColorCloud
             points={points}
             selectedId={selectedId}
+            sphereScale={sphereScale}
             highlight={highlight}
             showToneGuides={showToneGuides}
             showHueGuides={showHueGuides}
@@ -136,7 +141,8 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
       <SceneControls
         ref={ref}
         isMobileView={isMobileView}
-        autoRotateEnabled={autoRotateEnabled}
+        autoRotateMode={autoRotateMode}
+        autoRotateRpm={autoRotateRpm}
         northLockEnabled={northLockEnabled}
         yellowUpAzimuth={yellowUpAzimuth}
         keyboardInput={keyboardInput}

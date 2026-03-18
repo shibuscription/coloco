@@ -13,14 +13,16 @@ import type { PccsRenderablePoint } from "../utils/pccs3d";
 type ColorPointProps = {
   point: PccsRenderablePoint;
   selected: boolean;
+  sphereScale: number;
   highlighted: boolean;
   dimmed: boolean;
   onSelect: (id: string) => void;
 };
 
-export function ColorPoint({ point, selected, highlighted, dimmed, onSelect }: ColorPointProps) {
+export function ColorPoint({ point, selected, sphereScale, highlighted, dimmed, onSelect }: ColorPointProps) {
   const meshRef = useRef<Mesh>(null);
-  const targetScale = selected ? SELECTED_SCALE : highlighted ? HIGHLIGHT_SCALE : 1;
+  const relativeScale = selected ? SELECTED_SCALE : highlighted ? HIGHLIGHT_SCALE : 1;
+  const targetScale = sphereScale * relativeScale;
 
   useFrame(() => {
     const mesh = meshRef.current;

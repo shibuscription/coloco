@@ -1,10 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { PerspectiveCamera, Spherical, Vector3 } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
   AUTO_ROTATE_RESUME_DELAY_MS,
-  AUTO_ROTATE_SPEED,
   MAX_DISTANCE,
   MOBILE_MAX_DISTANCE,
   MAX_POLAR_ANGLE,
@@ -20,7 +20,8 @@ const easeOutCubic = (value: number): number => 1 - (1 - value) ** 3;
 
 type SceneControlsProps = {
   isMobileView: boolean;
-  autoRotateEnabled: boolean;
+  autoRotateMode: "cw" | "ccw" | "off";
+  autoRotateRpm: number;
   northLockEnabled: boolean;
   yellowUpAzimuth: number | null;
   keyboardInput: {
@@ -43,7 +44,8 @@ const KEYBOARD_SETTLE_EPSILON = 0.0008;
 
 export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>(function SceneControls({
   isMobileView,
-  autoRotateEnabled,
+  autoRotateMode,
+  autoRotateRpm,
   northLockEnabled,
   yellowUpAzimuth,
   keyboardInput,
@@ -136,6 +138,19 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
     yellowUpAzimuthRef.current = yellowUpAzimuth;
   }, [yellowUpAzimuth]);
 
+  useFrame((_, delta) => {
+    const controls = controlsRef.current;
+    if (!controls || isInteractionPaused || isAligning || hasKeyboardInput || autoRotateMode === "off") {
+      return;
+    }
+
+    const direction = autoRotateMode === "cw" ? 1 : -1;
+    const rotationsPerSecond = autoRotateRpm / 60;
+    const rotationDelta = direction * rotationsPerSecond * (Math.PI * 2) * delta;
+
+    applySphericalPosition(controls.getAzimuthalAngle() + rotationDelta, controls.getPolarAngle());
+  });
+
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) {
@@ -173,7 +188,7 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
   }, []);
 
   useEffect(() => {
-    if (autoRotateEnabled) {
+    if (autoRotateMode !== "off") {
       return;
     }
 
@@ -183,7 +198,7 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
     }
 
     setIsInteractionPaused(false);
-  }, [autoRotateEnabled]);
+  }, [autoRotateMode]);
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -330,8 +345,7 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
       maxDistance={isMobileView ? MOBILE_MAX_DISTANCE : MAX_DISTANCE}
       minAzimuthAngle={northLockEnabled && !isAligning && yellowUpAzimuth !== null ? yellowUpAzimuth : -Infinity}
       maxAzimuthAngle={northLockEnabled && !isAligning && yellowUpAzimuth !== null ? yellowUpAzimuth : Infinity}
-      autoRotate={autoRotateEnabled && !isInteractionPaused && !isAligning && !hasKeyboardInput}
-      autoRotateSpeed={AUTO_ROTATE_SPEED}
+      autoRotate={false}
     />
   );
 });

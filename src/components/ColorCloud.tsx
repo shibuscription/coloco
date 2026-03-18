@@ -7,6 +7,7 @@ import type { PccsRenderablePoint } from "../utils/pccs3d";
 type ColorCloudProps = {
   points: PccsRenderablePoint[];
   selectedId: string | null;
+  sphereScale: number;
   highlight: HighlightState;
   showToneGuides: boolean;
   showHueGuides: boolean;
@@ -17,6 +18,7 @@ type ColorCloudProps = {
 export function ColorCloud({
   points,
   selectedId,
+  sphereScale,
   highlight,
   showToneGuides,
   showHueGuides,
@@ -36,6 +38,7 @@ export function ColorCloud({
           key={point.id}
           point={point}
           selected={point.id === selectedId}
+          sphereScale={sphereScale}
           highlighted={isPointHighlighted(point, highlight)}
           dimmed={shouldDimPoint(point, highlight)}
           onSelect={onSelectPoint}

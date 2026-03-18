@@ -1,9 +1,15 @@
 import { Line, Text } from "@react-three/drei";
-import { pccsRepresentativeHues12 } from "../data";
+import { pccsHues } from "../data";
 import { CHROMA_SCALE, VERTICAL_SCALE } from "../constants/viewConfig";
 
 const hueGuideRadius = 10 * CHROMA_SCALE;
 const lightnessTicks = [1.5, 3.5, 5.5, 7.5, 9.5];
+const sceneGuideHueLabels = pccsHues.map((hue) => ({
+  hueIndex24: hue.hueIndex24,
+  hueCode24: hue.hueCode24,
+  angleDeg: hue.angleDeg,
+  label: `${hue.hueIndex24}:${hue.hueCode24}`,
+}));
 
 const ringPoints = Array.from({ length: 65 }, (_, index) => {
   const angle = (index / 64) * Math.PI * 2;
@@ -23,23 +29,23 @@ export function SceneGuides() {
         </group>
       ))}
 
-      {pccsRepresentativeHues12.map((hue) => {
-        const theta = (hue.angleDeg * Math.PI) / 180;
+      {sceneGuideHueLabels.map(({ hueIndex24, angleDeg, label }) => {
+        const theta = (angleDeg * Math.PI) / 180;
         const x = Math.cos(theta) * (hueGuideRadius + 0.6);
         const z = Math.sin(theta) * (hueGuideRadius + 0.6);
         const outwardRotationY = Math.PI / 2 - theta;
 
         return (
           <Text
-            key={hue.hueIndex24}
+            key={hueIndex24}
             position={[x, 0.2, z]}
             rotation={[0, outwardRotationY, 0]}
-            fontSize={0.32}
+            fontSize={0.24}
             color="#5a4c3b"
             anchorX="center"
             anchorY="middle"
           >
-            {hue.hueCode24}
+            {label}
           </Text>
         );
       })}
