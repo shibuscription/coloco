@@ -247,13 +247,15 @@ export default function App() {
       }
 
       const panelRect = panelElement.getBoundingClientRect();
+      const headerElement = panelElement.querySelector(".color-chip") as HTMLElement | null;
+      const headerRect = headerElement?.getBoundingClientRect() ?? panelRect;
       const stageRect = stageElement.getBoundingClientRect();
       const isMobileLayout = window.matchMedia("(max-width: 980px)").matches;
       const x = isMobileLayout
-        ? panelRect.left - stageRect.left + panelRect.width * 0.5
+        ? headerRect.left - stageRect.left + 18
         : panelRect.left - stageRect.left + 14;
       const y = isMobileLayout
-        ? panelRect.top - stageRect.top + 12
+        ? headerRect.top - stageRect.top + 18
         : panelRect.top - stageRect.top + Math.min(40, panelRect.height * 0.42);
 
       setInfoPanelAnchor({ x, y });
@@ -279,6 +281,15 @@ export default function App() {
     const endX = infoPanelAnchor.x;
     const endY = infoPanelAnchor.y;
     const direction = endX >= startX ? 1 : -1;
+
+    if (isMobileView) {
+      const verticalRise = Math.max(26, Math.min(72, Math.abs(endY - startY) * 0.45 + 18));
+      const elbowX = endX;
+      const elbowY = startY + (endY > startY ? verticalRise * 0.38 : -verticalRise * 0.38);
+
+      return `M ${startX} ${startY} L ${elbowX} ${elbowY} L ${endX} ${endY}`;
+    }
+
     const verticalDelta = endY - startY;
     const diagonalRun = Math.min(Math.abs(endX - startX) * 0.55, Math.max(28, Math.abs(verticalDelta)));
     const elbowX = startX + diagonalRun * direction;
