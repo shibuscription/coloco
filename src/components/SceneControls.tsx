@@ -24,6 +24,8 @@ type SceneControlsProps = {
   autoRotateRpm: number;
   northLockEnabled: boolean;
   yellowUpAzimuth: number | null;
+  initialViewState?: SceneViewState | null;
+  onViewStateChange?: (state: SceneViewState) => void;
   keyboardInput: {
     left: boolean;
     right: boolean;
@@ -32,9 +34,17 @@ type SceneControlsProps = {
   };
 };
 
+export type SceneViewState = {
+  azimuth: number;
+  polar: number;
+  distance: number;
+  target: [number, number, number];
+};
+
 export type SceneControlsHandle = {
   nudgeAzimuth: (delta: number) => void;
   nudgePolar: (delta: number) => void;
+  getViewState: () => SceneViewState | null;
 };
 
 const KEYBOARD_AZIMUTH_SPEED = Math.PI * 0.9;
@@ -48,9 +58,12 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
   autoRotateRpm,
   northLockEnabled,
   yellowUpAzimuth,
+  initialViewState = null,
+  onViewStateChange,
   keyboardInput,
 }: SceneControlsProps, ref) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
+  const onViewStateChangeRef = useRef(onViewStateChange);
   const resumeTimerRef = useRef<number | null>(null);
   const alignFrameRef = useRef<number | null>(null);
   const keyboardFrameRef = useRef<number | null>(null);
@@ -62,6 +75,31 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
   const previousNorthLockRef = useRef(false);
   const [isInteractionPaused, setIsInteractionPaused] = useState(false);
   const [isAligning, setIsAligning] = useState(false);
+
+  useEffect(() => {
+    onViewStateChangeRef.current = onViewStateChange;
+  }, [onViewStateChange]);
+
+  const getCurrentViewState = (): SceneViewState | null => {
+    const controls = controlsRef.current;
+    if (!controls) {
+      return null;
+    }
+
+    return {
+      azimuth: controls.getAzimuthalAngle(),
+      polar: controls.getPolarAngle(),
+      distance: controls.getDistance(),
+      target: [controls.target.x, controls.target.y, controls.target.z],
+    };
+  };
+
+  const emitViewStateChange = () => {
+    const nextViewState = getCurrentViewState();
+    if (nextViewState) {
+      onViewStateChangeRef.current?.(nextViewState);
+    }
+  };
 
   const cancelAlignment = () => {
     if (alignFrameRef.current !== null) {
@@ -79,23 +117,35 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
     keyboardLastTickRef.current = null;
   };
 
-  const applySphericalPosition = (azimuth: number, polar: number) => {
+  const applySphericalPosition = (
+    azimuth: number,
+    polar: number,
+    {
+      radius,
+      target,
+    }: {
+      radius?: number;
+      target?: Vector3;
+    } = {},
+  ) => {
     const controls = controlsRef.current;
     if (!controls) {
       return;
     }
 
     const camera = controls.object as PerspectiveCamera;
-    const target = controls.target.clone();
-    const radius = controls.getDistance();
-    const spherical = new Spherical(radius, polar, azimuth);
+    const nextTarget = target ?? controls.target.clone();
+    const nextRadius = radius ?? controls.getDistance();
+    controls.target.copy(nextTarget);
+    const spherical = new Spherical(nextRadius, polar, azimuth);
     const nextOffset = new Vector3().setFromSpherical(spherical);
 
-    camera.position.copy(target).add(nextOffset);
+    camera.position.copy(nextTarget).add(nextOffset);
     camera.up.set(0, 1, 0);
-    camera.lookAt(target);
+    camera.lookAt(nextTarget);
     camera.updateProjectionMatrix();
     controls.update();
+    emitViewStateChange();
   };
 
   useImperativeHandle(
@@ -119,6 +169,9 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
         cancelAlignment();
         const nextPolar = Math.min(MAX_POLAR_ANGLE, Math.max(MIN_POLAR_ANGLE, controls.getPolarAngle() + delta));
         applySphericalPosition(controls.getAzimuthalAngle(), nextPolar);
+      },
+      getViewState() {
+        return getCurrentViewState();
       },
     }),
     [northLockEnabled],
@@ -175,10 +228,13 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
 
     controls.addEventListener("start", handleStart);
     controls.addEventListener("end", handleEnd);
+    controls.addEventListener("change", emitViewStateChange);
+    emitViewStateChange();
 
     return () => {
       controls.removeEventListener("start", handleStart);
       controls.removeEventListener("end", handleEnd);
+      controls.removeEventListener("change", emitViewStateChange);
       if (resumeTimerRef.current) {
         window.clearTimeout(resumeTimerRef.current);
       }
@@ -186,6 +242,23 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
       cancelKeyboardAnimation();
     };
   }, []);
+
+  useEffect(() => {
+    if (!initialViewState) {
+      return;
+    }
+
+    const controls = controlsRef.current;
+    if (!controls) {
+      return;
+    }
+
+    const nextTarget = new Vector3(...initialViewState.target);
+    applySphericalPosition(initialViewState.azimuth, initialViewState.polar, {
+      radius: initialViewState.distance,
+      target: nextTarget,
+    });
+  }, [initialViewState]);
 
   useEffect(() => {
     if (autoRotateMode !== "off") {

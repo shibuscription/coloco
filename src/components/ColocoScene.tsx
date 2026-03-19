@@ -10,7 +10,7 @@ import {
 } from "../constants/viewConfig";
 import { ColorCloud } from "./ColorCloud";
 import { SceneControls } from "./SceneControls";
-import type { SceneControlsHandle } from "./SceneControls";
+import type { SceneControlsHandle, SceneViewState } from "./SceneControls";
 import { SceneGuides } from "./SceneGuides";
 import type { HighlightState } from "../utils/highlight";
 import type { PccsRenderablePoint } from "../utils/pccs3d";
@@ -44,6 +44,8 @@ type ColocoSceneProps = {
   showToneGuides: boolean;
   showHueGuides: boolean;
   showLightnessGuides: boolean;
+  initialViewState?: SceneViewState | null;
+  onViewStateChange?: (state: SceneViewState) => void;
   keyboardInput: {
     left: boolean;
     right: boolean;
@@ -65,6 +67,8 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
   showToneGuides,
   showHueGuides,
   showLightnessGuides,
+  initialViewState = null,
+  onViewStateChange,
   keyboardInput,
   onSelectPoint,
   onClearSelection,
@@ -145,6 +149,8 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
         autoRotateRpm={autoRotateRpm}
         northLockEnabled={northLockEnabled}
         yellowUpAzimuth={yellowUpAzimuth}
+        initialViewState={initialViewState}
+        onViewStateChange={onViewStateChange}
         keyboardInput={keyboardInput}
       />
     </Canvas>

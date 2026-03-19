@@ -11,6 +11,15 @@ import { analyzeImageDataToPccs, analyzeImageToPccs, createPccsLabPalette } from
 import type { ImagePccsAnalysis } from "./utils/imageClassification";
 import type { HighlightState } from "./utils/highlight";
 import { getSwipeNavigationTargetId } from "./utils/pccsNavigation";
+import {
+  createPersistedImageAssetsFromFile,
+  getImageDataFromDataUrl,
+  loadPersistedAppState,
+  savePersistedAppState,
+  type PersistedAppState,
+  type PersistedHighlightMode,
+  type PersistedViewState,
+} from "./utils/persistence";
 import { createRenderablePoints } from "./utils/pccs3d";
 
 type OverlayKind = "settings" | "image" | "multi" | null;
@@ -78,16 +87,40 @@ const clearViewerKeyboardInput = (): ViewerKeyboardInput => ({
   ...INITIAL_VIEWER_KEYBOARD_INPUT,
 });
 
+const getPersistedHighlightMode = (highlight: HighlightState): PersistedHighlightMode => {
+  if (highlight.customIds.length > 0) {
+    return "multi";
+  }
+
+  if (highlight.imageIds.length > 0) {
+    return "image";
+  }
+
+  if (highlight.toneValue) {
+    return "tone";
+  }
+
+  if (highlight.hueValue) {
+    return "hue";
+  }
+
+  return "none";
+};
+
 export default function App() {
   const viewerInteractionRef = useRef<HTMLDivElement | null>(null);
   const sceneControlsRef = useRef<SceneControlsHandle | null>(null);
   const viewerKeyboardInputRef = useRef<ViewerKeyboardInput>(INITIAL_VIEWER_KEYBOARD_INPUT);
   const isViewerKeyboardActiveRef = useRef(false);
   const multiSelectedIdsRef = useRef<string[]>([]);
+  const viewStateRef = useRef<PersistedViewState | null>(null);
+  const persistTimeoutRef = useRef<number | null>(null);
+  const isHydratedRef = useRef(false);
   const cameraRestoreStateRef = useRef<{
     analysis: ImagePccsAnalysis | null;
     sourceImageName: string;
     previewUrl: string;
+    analysisImageDataUrl: string;
     highlight: HighlightState;
   } | null>(null);
   const liveSelectionInitializedRef = useRef(false);
@@ -103,6 +136,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState<ImagePccsAnalysis | null>(null);
   const [sourceImageName, setSourceImageName] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
+  const [analysisImageDataUrl, setAnalysisImageDataUrl] = useState("");
   const [isMobileView, setIsMobileView] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(max-width: 980px)").matches : false,
   );
@@ -115,12 +149,116 @@ export default function App() {
   const [showToneGuides, setShowToneGuides] = useState(false);
   const [showHueGuides, setShowHueGuides] = useState(false);
   const [showLightnessGuides, setShowLightnessGuides] = useState(false);
+  const [initialViewState, setInitialViewState] = useState<PersistedViewState | null>(null);
 
   useEffect(() => {
     multiSelectedIdsRef.current = multiSelectedIds;
   }, [multiSelectedIds]);
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
+
+  const flushPersistedState = () => {
+    if (!isHydratedRef.current) {
+      return;
+    }
+
+    savePersistedAppState(buildPersistedState());
+  };
+
+  const schedulePersistedState = () => {
+    if (!isHydratedRef.current) {
+      return;
+    }
+
+    if (persistTimeoutRef.current !== null) {
+      window.clearTimeout(persistTimeoutRef.current);
+    }
+
+    persistTimeoutRef.current = window.setTimeout(() => {
+      persistTimeoutRef.current = null;
+      flushPersistedState();
+    }, 180);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const restorePersistedState = async () => {
+      const persistedState = loadPersistedAppState();
+      if (!persistedState) {
+        isHydratedRef.current = true;
+        return;
+      }
+
+      setAutoRotateMode(persistedState.view.autoRotateMode);
+      setAutoRotateRpm(persistedState.view.autoRotateRpm);
+      setSphereScale(persistedState.view.sphereScale);
+      setIsNorthLockEnabled(persistedState.view.northLockEnabled);
+      setShowToneGuides(persistedState.view.showToneGuides);
+      setShowHueGuides(persistedState.view.showHueGuides);
+      setShowLightnessGuides(persistedState.view.showLightnessGuides);
+      setIsSettingsOpen(persistedState.panels.isSettingsOpen);
+      setIsImageModalOpen(persistedState.panels.isImageModalOpen);
+      setIsMultiSelectOpen(persistedState.panels.isMultiSelectOpen);
+      setActiveOverlay(persistedState.panels.activeOverlay);
+      setSelectedId(persistedState.selection.selectedPointId);
+      setHighlight(persistedState.highlight.state);
+      setMultiSelectedIds(
+        persistedState.highlight.multiSelectedIds.length > 0
+          ? persistedState.highlight.multiSelectedIds
+          : getIdsForHighlightState(persistedState.highlight.state),
+      );
+      setInitialViewState(persistedState.view.camera);
+      viewStateRef.current = persistedState.view.camera;
+
+      if (persistedState.image) {
+        setSourceImageName(persistedState.image.sourceImageName);
+        setPreviewUrl(persistedState.image.previewDataUrl);
+        setAnalysisImageDataUrl(persistedState.image.analysisDataUrl);
+
+        if (persistedState.image.analysisDataUrl) {
+          try {
+            const imageData = await getImageDataFromDataUrl(persistedState.image.analysisDataUrl);
+            if (cancelled) {
+              return;
+            }
+
+            const restoredAnalysis = analyzeImageDataToPccs(imageData, pccsLabPalette, {
+              maxDimension: 384,
+            });
+            const selectedClusterIds = new Set(persistedState.image.selectedClusterIds);
+            setAnalysis({
+              ...restoredAnalysis,
+              clusters: restoredAnalysis.clusters.map((cluster) => ({
+                ...cluster,
+                selected: selectedClusterIds.has(cluster.pccsId),
+              })),
+            });
+          } catch {
+            if (!cancelled) {
+              setAnalysis(null);
+              setSourceImageName("");
+              setPreviewUrl("");
+              setAnalysisImageDataUrl("");
+            }
+          }
+        }
+      }
+
+      if (!cancelled) {
+        isHydratedRef.current = true;
+      }
+    };
+
+    void restorePersistedState();
+
+    return () => {
+      cancelled = true;
+      if (persistTimeoutRef.current !== null) {
+        window.clearTimeout(persistTimeoutRef.current);
+      }
+    };
+  }, [pccsLabPalette]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 980px)");
@@ -214,6 +352,43 @@ export default function App() {
 
     return [];
   };
+
+  const buildPersistedState = (): PersistedAppState => ({
+    version: 1,
+    view: {
+      autoRotateMode,
+      autoRotateRpm,
+      sphereScale,
+      northLockEnabled: isNorthLockEnabled,
+      showToneGuides,
+      showHueGuides,
+      showLightnessGuides,
+      camera: viewStateRef.current,
+    },
+    panels: {
+      isSettingsOpen,
+      isImageModalOpen,
+      isMultiSelectOpen,
+      activeOverlay,
+    },
+    highlight: {
+      mode: getPersistedHighlightMode(highlight),
+      state: highlight,
+      multiSelectedIds,
+    },
+    selection: {
+      selectedPointId: selectedId,
+    },
+    image:
+      previewUrl || analysisImageDataUrl || sourceImageName || analysis
+        ? {
+            sourceImageName,
+            previewDataUrl: previewUrl,
+            analysisDataUrl: analysisImageDataUrl,
+            selectedClusterIds: analysis?.clusters.filter((cluster) => cluster.selected).map((cluster) => cluster.pccsId) ?? [],
+          }
+        : null,
+  });
 
   const clearImageHighlight = () => {
     setAnalysis((current) =>
@@ -443,11 +618,34 @@ export default function App() {
 
   useEffect(() => {
     return () => {
-      if (previewUrl) {
+      if (previewUrl.startsWith("blob:")) {
         URL.revokeObjectURL(previewUrl);
       }
     };
   }, [previewUrl]);
+
+  useEffect(() => {
+    schedulePersistedState();
+  }, [
+    activeOverlay,
+    analysis,
+    analysisImageDataUrl,
+    autoRotateMode,
+    autoRotateRpm,
+    highlight,
+    isImageModalOpen,
+    isMultiSelectOpen,
+    isSettingsOpen,
+    isNorthLockEnabled,
+    multiSelectedIds,
+    previewUrl,
+    selectedId,
+    showHueGuides,
+    showLightnessGuides,
+    showToneGuides,
+    sourceImageName,
+    sphereScale,
+  ]);
 
   useEffect(() => {
     const viewerElement = viewerInteractionRef.current;
@@ -462,6 +660,16 @@ export default function App() {
       viewerElement.removeEventListener("selectstart", preventSelectStart);
     };
   }, []);
+
+  useEffect(
+    () => () => {
+      if (persistTimeoutRef.current !== null) {
+        window.clearTimeout(persistTimeoutRef.current);
+      }
+      flushPersistedState();
+    },
+    [],
+  );
 
   const activateViewerKeyboardControl = () => {
     isViewerKeyboardActiveRef.current = true;
@@ -485,6 +693,7 @@ export default function App() {
       analysis,
       sourceImageName,
       previewUrl,
+      analysisImageDataUrl,
       highlight,
     };
     liveSelectionInitializedRef.current = false;
@@ -501,6 +710,7 @@ export default function App() {
     setAnalysis(restoreState.analysis);
     setSourceImageName(restoreState.sourceImageName);
     setHighlight(restoreState.highlight);
+    setAnalysisImageDataUrl(restoreState.analysisImageDataUrl);
     setMultiSelectedIds(getIdsForHighlightState(restoreState.highlight));
     cameraRestoreStateRef.current = null;
   };
@@ -524,12 +734,13 @@ export default function App() {
     setAnalysis(null);
     setSourceImageName("");
     setPreviewUrl((current) => {
-      if (current) {
+      if (current && current.startsWith("blob:")) {
         URL.revokeObjectURL(current);
       }
 
       return "";
     });
+    setAnalysisImageDataUrl("");
     setHighlight((current) => {
       const nextHighlight = {
         ...current,
@@ -541,16 +752,18 @@ export default function App() {
   };
 
   const handlePickedImage = async (file: File) => {
-    const nextPreviewUrl = URL.createObjectURL(file);
+    const [nextAnalysis, persistedImageAssets] = await Promise.all([
+      analyzeImageToPccs(file, pccsLabPalette),
+      createPersistedImageAssetsFromFile(file),
+    ]);
 
     setPreviewUrl((current) => {
-      if (current) {
+      if (current && current.startsWith("blob:")) {
         URL.revokeObjectURL(current);
       }
-      return nextPreviewUrl;
+      return persistedImageAssets.previewDataUrl;
     });
-
-    const nextAnalysis = await analyzeImageToPccs(file, pccsLabPalette);
+    setAnalysisImageDataUrl(persistedImageAssets.analysisDataUrl);
     setSourceImageName(file.name);
     applyImageAnalysisResult(nextAnalysis, { preserveExistingSelection: false });
   };
@@ -581,6 +794,11 @@ export default function App() {
       }
       return next;
     });
+  };
+
+  const handleSceneViewStateChange = (nextViewState: PersistedViewState) => {
+    viewStateRef.current = nextViewState;
+    schedulePersistedState();
   };
 
   const handleToggleMultiSelectTile = (pccsId: string) => {
@@ -638,10 +856,12 @@ export default function App() {
               northLockEnabled={isNorthLockEnabled}
               showToneGuides={showToneGuides}
               showHueGuides={showHueGuides}
-            showLightnessGuides={showLightnessGuides}
-            keyboardInput={viewerKeyboardInput}
-            onSelectPoint={setSelectedId}
-            onClearSelection={() => setSelectedId(null)}
+              showLightnessGuides={showLightnessGuides}
+              initialViewState={initialViewState}
+              onViewStateChange={handleSceneViewStateChange}
+              keyboardInput={viewerKeyboardInput}
+              onSelectPoint={setSelectedId}
+              onClearSelection={() => setSelectedId(null)}
             />
           </div>
 
