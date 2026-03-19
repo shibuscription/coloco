@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { PccsRenderablePoint } from "../utils/pccs3d";
 import type { SwipeDirection } from "../utils/pccsNavigation";
 
@@ -6,6 +6,7 @@ type ColorInfoPanelProps = {
   selectedPoint: PccsRenderablePoint | null;
   onSwipeNavigate: (direction: SwipeDirection) => void;
   onFocusPanel?: () => void;
+  panelRef?: RefObject<HTMLElement | null>;
 };
 
 type Point = {
@@ -27,7 +28,7 @@ const getContrastTextColor = (hex: string): string => {
   return luminance > 145 ? "#2b251d" : "#fffaf1";
 };
 
-export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }: ColorInfoPanelProps) {
+export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel, panelRef }: ColorInfoPanelProps) {
   const swipeStartRef = useRef<Point | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
   const [isMobileView, setIsMobileView] = useState(() =>
@@ -157,6 +158,7 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel }:
 
   return (
     <section
+      ref={panelRef}
       className={`panel info-panel info-overlay-card ${isMobileView ? "is-mobile-collapsible" : ""} ${
         showDetails ? "is-expanded" : "is-collapsed"
       }`}

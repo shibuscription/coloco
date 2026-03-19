@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 type SelectOption = {
   value: string;
@@ -25,6 +25,7 @@ type HighlightControlsProps = {
   onToggleToneGuides: () => void;
   onToggleHueGuides: () => void;
   onToggleLightnessGuides: () => void;
+  onRequestReset: () => void;
   toneOptions: SelectOption[];
   hueOptions: SelectOption[];
 };
@@ -100,11 +101,81 @@ function RotateCcwIcon() {
   );
 }
 
+function EraserIcon() {
+  return (
+    <svg className="panel-action-button-svg" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M14.4 5.5L18.5 9.6C19.3 10.4 19.3 11.6 18.5 12.4L11.4 19.5H7.3L4.8 17C4 16.2 4 15 4.8 14.2L11.6 7.4C12.4 6.6 13.6 6.6 14.4 5.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.8 19.5H18.8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9.6 9.4L14.6 14.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [dropdownMaxHeight, setDropdownMaxHeight] = useState<number | undefined>(undefined);
   const selectedOption = options.find((option) => option.value === value) ?? options[0];
   const textColor = getContrastTextColor(selectedOption.swatchHex);
+  const keyboardOptions = options.filter((option) => option.value !== "");
+  const selectedKeyboardIndex = keyboardOptions.findIndex((option) => option.value === value);
+
+  const moveSelection = (direction: -1 | 1) => {
+    if (keyboardOptions.length === 0) {
+      return;
+    }
+
+    const baseIndex = selectedKeyboardIndex >= 0 ? selectedKeyboardIndex : direction > 0 ? -1 : 0;
+    const nextIndex =
+      ((baseIndex + direction) % keyboardOptions.length + keyboardOptions.length) % keyboardOptions.length;
+    const nextOption = keyboardOptions[nextIndex];
+
+    if (!nextOption || nextOption.value === value) {
+      return;
+    }
+
+    onChange(nextOption.value);
+  };
+
+  const handleDropdownKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveSelection(1);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveSelection(-1);
+      return;
+    }
+
+    if (event.key === "Escape" && isOpen) {
+      event.preventDefault();
+      setIsOpen(false);
+      triggerRef.current?.focus();
+    }
+  };
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -117,14 +188,50 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setDropdownMaxHeight(undefined);
+      return;
+    }
+
+    const updateDropdownMaxHeight = () => {
+      if (typeof window === "undefined" || window.matchMedia("(max-width: 980px)").matches) {
+        setDropdownMaxHeight(undefined);
+        return;
+      }
+
+      const menuElement = menuRef.current;
+      if (!menuElement) {
+        return;
+      }
+
+      const rect = menuElement.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const availableHeight = Math.max(180, Math.floor(viewportHeight - rect.top - 16));
+      setDropdownMaxHeight(availableHeight);
+    };
+
+    const frameId = window.requestAnimationFrame(updateDropdownMaxHeight);
+    window.addEventListener("resize", updateDropdownMaxHeight);
+    window.addEventListener("scroll", updateDropdownMaxHeight, true);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", updateDropdownMaxHeight);
+      window.removeEventListener("scroll", updateDropdownMaxHeight, true);
+    };
+  }, [isOpen]);
+
   return (
     <div ref={rootRef} className={`custom-dropdown ${isOpen ? "is-open" : ""}`}>
       <label className="custom-dropdown-label">{label}</label>
       <button
+        ref={triggerRef}
         type="button"
         className="custom-dropdown-trigger"
         style={{ background: selectedOption.swatchHex, color: textColor }}
         onClick={() => setIsOpen((open) => !open)}
+        onKeyDown={handleDropdownKeyDown}
       >
         <span>{selectedOption.label}</span>
         <span className="custom-dropdown-caret" aria-hidden="true">
@@ -133,7 +240,7 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
       </button>
 
       {isOpen ? (
-        <div className="custom-dropdown-menu">
+        <div ref={menuRef} className="custom-dropdown-menu" style={{ maxHeight: dropdownMaxHeight }}>
           {options.map((option) => {
             const optionTextColor = getContrastTextColor(option.swatchHex);
             return (
@@ -145,7 +252,9 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
                 onClick={() => {
                   onChange(option.value);
                   setIsOpen(false);
+                  triggerRef.current?.focus();
                 }}
+                onKeyDown={handleDropdownKeyDown}
               >
                 <span>{option.label}</span>
                 {option.value === value ? <span aria-hidden="true">✔</span> : null}
@@ -177,6 +286,7 @@ export function HighlightControls({
   onToggleToneGuides,
   onToggleHueGuides,
   onToggleLightnessGuides,
+  onRequestReset,
   toneOptions,
   hueOptions,
 }: HighlightControlsProps) {
@@ -191,6 +301,17 @@ export function HighlightControls({
   return (
     <div className="highlight-controls">
       <div className="panel-action-row" aria-label="3Dビュー操作">
+        <div className="panel-action-left">
+          <button
+            type="button"
+            className="panel-action-button panel-action-button-reset"
+            aria-label="設定を初期化する"
+            title="設定を初期化する"
+            onClick={onRequestReset}
+          >
+            <EraserIcon />
+          </button>
+        </div>
         <div className="panel-action-buttons">
           <button
             type="button"

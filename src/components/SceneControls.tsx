@@ -45,6 +45,7 @@ export type SceneControlsHandle = {
   nudgeAzimuth: (delta: number) => void;
   nudgePolar: (delta: number) => void;
   getViewState: () => SceneViewState | null;
+  applyViewState: (state: SceneViewState) => void;
 };
 
 const KEYBOARD_AZIMUTH_SPEED = Math.PI * 0.9;
@@ -172,6 +173,16 @@ export const SceneControls = forwardRef<SceneControlsHandle, SceneControlsProps>
       },
       getViewState() {
         return getCurrentViewState();
+      },
+      applyViewState(state: SceneViewState) {
+        cancelAlignment();
+        keyboardTargetRef.current = null;
+        cancelKeyboardAnimation();
+        const nextTarget = new Vector3(...state.target);
+        applySphericalPosition(state.azimuth, state.polar, {
+          radius: state.distance,
+          target: nextTarget,
+        });
       },
     }),
     [northLockEnabled],

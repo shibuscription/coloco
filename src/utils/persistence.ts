@@ -138,3 +138,11 @@ export const savePersistedAppState = (state: PersistedAppState): void => {
     // Ignore quota and serialization failures. The app should continue safely.
   }
 };
+
+export const clearPersistedAppState = (): void => {
+  try {
+    window.localStorage.removeItem(COLOCO_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures. The app should continue safely.
+  }
+};

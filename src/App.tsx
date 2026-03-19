@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Spherical, Vector3 } from "three";
 import { ColocoScene } from "./components/ColocoScene";
 import { ColorInfoPanel } from "./components/ColorInfoPanel";
 import { HighlightControls } from "./components/HighlightControls";
@@ -12,6 +13,7 @@ import type { ImagePccsAnalysis } from "./utils/imageClassification";
 import type { HighlightState } from "./utils/highlight";
 import { getSwipeNavigationTargetId } from "./utils/pccsNavigation";
 import {
+  clearPersistedAppState,
   createPersistedImageAssetsFromFile,
   getImageDataFromDataUrl,
   loadPersistedAppState,
@@ -21,9 +23,11 @@ import {
   type PersistedViewState,
 } from "./utils/persistence";
 import { createRenderablePoints } from "./utils/pccs3d";
+import { INITIAL_CAMERA_POSITION, MOBILE_INITIAL_CAMERA_POSITION } from "./constants/viewConfig";
 
 type OverlayKind = "settings" | "image" | "multi" | null;
 type AutoRotateMode = "cw" | "ccw" | "off";
+type ScreenPoint = { x: number; y: number; visible: boolean };
 
 type ToneOption = {
   value: string;
@@ -69,6 +73,40 @@ const INITIAL_HIGHLIGHT: HighlightState = {
   customIds: [],
 };
 
+const INITIAL_AUTO_ROTATE_MODE: AutoRotateMode = "cw";
+const INITIAL_AUTO_ROTATE_RPM = 1.0;
+const INITIAL_SPHERE_SCALE = 1;
+
+const alignInitialCameraAzimuth = (
+  basePosition: [number, number, number],
+  azimuth: number | null,
+): [number, number, number] => {
+  if (azimuth === null) {
+    return basePosition;
+  }
+
+  const baseVector = new Vector3(...basePosition);
+  const spherical = new Spherical().setFromVector3(baseVector);
+  spherical.theta = azimuth;
+  const alignedVector = new Vector3().setFromSpherical(spherical);
+  return [alignedVector.x, alignedVector.y, alignedVector.z];
+};
+
+const createViewStateFromCameraPosition = (
+  position: [number, number, number],
+  target: [number, number, number] = [0, 0, 0],
+): PersistedViewState => {
+  const offset = new Vector3(position[0] - target[0], position[1] - target[1], position[2] - target[2]);
+  const spherical = new Spherical().setFromVector3(offset);
+
+  return {
+    azimuth: spherical.theta,
+    polar: spherical.phi,
+    distance: spherical.radius,
+    target,
+  };
+};
+
 type ViewerKeyboardInput = {
   left: boolean;
   right: boolean;
@@ -108,8 +146,10 @@ const getPersistedHighlightMode = (highlight: HighlightState): PersistedHighligh
 };
 
 export default function App() {
+  const viewerStageRef = useRef<HTMLElement | null>(null);
   const viewerInteractionRef = useRef<HTMLDivElement | null>(null);
   const sceneControlsRef = useRef<SceneControlsHandle | null>(null);
+  const infoPanelRef = useRef<HTMLElement | null>(null);
   const viewerKeyboardInputRef = useRef<ViewerKeyboardInput>(INITIAL_VIEWER_KEYBOARD_INPUT);
   const isViewerKeyboardActiveRef = useRef(false);
   const multiSelectedIdsRef = useRef<string[]>([]);
@@ -142,20 +182,110 @@ export default function App() {
   );
   const [viewerKeyboardInput, setViewerKeyboardInput] = useState<ViewerKeyboardInput>(INITIAL_VIEWER_KEYBOARD_INPUT);
   const [isViewerKeyboardActive, setIsViewerKeyboardActive] = useState(false);
-  const [sphereScale, setSphereScale] = useState(1);
-  const [autoRotateMode, setAutoRotateMode] = useState<AutoRotateMode>("cw");
-  const [autoRotateRpm, setAutoRotateRpm] = useState(1.0);
+  const [sphereScale, setSphereScale] = useState(INITIAL_SPHERE_SCALE);
+  const [autoRotateMode, setAutoRotateMode] = useState<AutoRotateMode>(INITIAL_AUTO_ROTATE_MODE);
+  const [autoRotateRpm, setAutoRotateRpm] = useState(INITIAL_AUTO_ROTATE_RPM);
   const [isNorthLockEnabled, setIsNorthLockEnabled] = useState(false);
   const [showToneGuides, setShowToneGuides] = useState(false);
   const [showHueGuides, setShowHueGuides] = useState(false);
   const [showLightnessGuides, setShowLightnessGuides] = useState(false);
   const [initialViewState, setInitialViewState] = useState<PersistedViewState | null>(null);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [selectedPointScreenPosition, setSelectedPointScreenPosition] = useState<ScreenPoint | null>(null);
+  const [infoPanelAnchor, setInfoPanelAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [isInfoPanelEntering, setIsInfoPanelEntering] = useState(false);
+  const [isInfoPanelContentVisible, setIsInfoPanelContentVisible] = useState(false);
 
   useEffect(() => {
     multiSelectedIdsRef.current = multiSelectedIds;
   }, [multiSelectedIds]);
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
+  const isInfoPanelVisible = Boolean(selectedPoint);
+
+  useEffect(() => {
+    if (!isInfoPanelVisible) {
+      setIsInfoPanelEntering(false);
+      setIsInfoPanelContentVisible(false);
+      return;
+    }
+
+    const wasVisible = viewerInteractionRef.current?.dataset.infoVisible === "true";
+    if (!wasVisible) {
+      setIsInfoPanelEntering(true);
+      setIsInfoPanelContentVisible(false);
+      const animationTimeoutId = window.setTimeout(() => {
+        setIsInfoPanelEntering(false);
+      }, 340);
+      const revealTimeoutId = window.setTimeout(() => {
+        setIsInfoPanelContentVisible(true);
+      }, 220);
+
+      return () => {
+        window.clearTimeout(animationTimeoutId);
+        window.clearTimeout(revealTimeoutId);
+      };
+    }
+
+    setIsInfoPanelEntering(false);
+    setIsInfoPanelContentVisible(true);
+  }, [isInfoPanelVisible, selectedId]);
+
+  useEffect(() => {
+    if (viewerInteractionRef.current) {
+      viewerInteractionRef.current.dataset.infoVisible = isInfoPanelVisible ? "true" : "false";
+    }
+  }, [isInfoPanelVisible]);
+
+  useEffect(() => {
+    const updateInfoPanelAnchor = () => {
+      const panelElement = infoPanelRef.current;
+      const stageElement = viewerStageRef.current;
+      if (!panelElement || !stageElement || !isInfoPanelVisible) {
+        setInfoPanelAnchor(null);
+        return;
+      }
+
+      const panelRect = panelElement.getBoundingClientRect();
+      const stageRect = stageElement.getBoundingClientRect();
+      const isMobileLayout = window.matchMedia("(max-width: 980px)").matches;
+      const x = isMobileLayout
+        ? panelRect.left - stageRect.left + panelRect.width * 0.5
+        : panelRect.left - stageRect.left + 14;
+      const y = isMobileLayout
+        ? panelRect.top - stageRect.top + 12
+        : panelRect.top - stageRect.top + Math.min(40, panelRect.height * 0.42);
+
+      setInfoPanelAnchor({ x, y });
+    };
+
+    updateInfoPanelAnchor();
+    window.addEventListener("resize", updateInfoPanelAnchor);
+    window.addEventListener("scroll", updateInfoPanelAnchor, true);
+
+    return () => {
+      window.removeEventListener("resize", updateInfoPanelAnchor);
+      window.removeEventListener("scroll", updateInfoPanelAnchor, true);
+    };
+  }, [isInfoPanelVisible, selectedId, isMobileView]);
+
+  const infoConnectorPath = useMemo(() => {
+    if (!selectedPointScreenPosition?.visible || !infoPanelAnchor) {
+      return null;
+    }
+
+    const startX = selectedPointScreenPosition.x;
+    const startY = selectedPointScreenPosition.y;
+    const endX = infoPanelAnchor.x;
+    const endY = infoPanelAnchor.y;
+    const direction = endX >= startX ? 1 : -1;
+    const verticalDelta = endY - startY;
+    const diagonalRun = Math.min(Math.abs(endX - startX) * 0.55, Math.max(28, Math.abs(verticalDelta)));
+    const elbowX = startX + diagonalRun * direction;
+    const elbowY = endY;
+
+    return `M ${startX} ${startY} L ${elbowX} ${elbowY} L ${endX} ${endY}`;
+  }, [infoPanelAnchor, isMobileView, selectedPointScreenPosition]);
 
   const flushPersistedState = () => {
     if (!isHydratedRef.current) {
@@ -270,6 +400,19 @@ export default function App() {
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
+  const defaultViewState = useMemo(() => {
+    const yellowPoint = points.find(
+      (point) => point.kind === "chromatic" && point.toneCode === "v" && point.hueIndex24 === 8,
+    );
+    const yellowUpAzimuth = yellowPoint
+      ? (Math.PI * 3) / 2 - Math.atan2(yellowPoint.position.z, yellowPoint.position.x)
+      : null;
+    const basePosition = isMobileView ? MOBILE_INITIAL_CAMERA_POSITION : INITIAL_CAMERA_POSITION;
+    const alignedPosition = alignInitialCameraAzimuth(basePosition, yellowUpAzimuth);
+
+    return createViewStateFromCameraPosition(alignedPosition);
+  }, [isMobileView, points]);
+
   const toneSelectOptions = useMemo(() => {
     const emptyOption = {
       value: "",
@@ -352,6 +495,35 @@ export default function App() {
 
     return [];
   };
+
+  const createDefaultPersistedState = (): PersistedAppState => ({
+    version: 1,
+    view: {
+      autoRotateMode: INITIAL_AUTO_ROTATE_MODE,
+      autoRotateRpm: INITIAL_AUTO_ROTATE_RPM,
+      sphereScale: INITIAL_SPHERE_SCALE,
+      northLockEnabled: false,
+      showToneGuides: false,
+      showHueGuides: false,
+      showLightnessGuides: false,
+      camera: defaultViewState,
+    },
+    panels: {
+      isSettingsOpen: false,
+      isImageModalOpen: false,
+      isMultiSelectOpen: false,
+      activeOverlay: null,
+    },
+    highlight: {
+      mode: "none",
+      state: INITIAL_HIGHLIGHT,
+      multiSelectedIds: [],
+    },
+    selection: {
+      selectedPointId: null,
+    },
+    image: null,
+  });
 
   const buildPersistedState = (): PersistedAppState => ({
     version: 1,
@@ -523,6 +695,7 @@ export default function App() {
         setIsSettingsOpen(false);
         setIsImageModalOpen(false);
         setIsMultiSelectOpen(false);
+        setIsResetDialogOpen(false);
         setActiveOverlay(null);
       }
     };
@@ -751,6 +924,48 @@ export default function App() {
     });
   };
 
+  const resetToInitialState = () => {
+    if (persistTimeoutRef.current !== null) {
+      window.clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = null;
+    }
+
+    cameraRestoreStateRef.current = null;
+    liveSelectionInitializedRef.current = false;
+    deactivateViewerKeyboardControl();
+    clearPersistedAppState();
+
+    setSelectedId(null);
+    setHighlight(INITIAL_HIGHLIGHT);
+    setMultiSelectedIds([]);
+    setAnalysis(null);
+    setSourceImageName("");
+    setPreviewUrl((current) => {
+      if (current && current.startsWith("blob:")) {
+        URL.revokeObjectURL(current);
+      }
+      return "";
+    });
+    setAnalysisImageDataUrl("");
+    setSphereScale(INITIAL_SPHERE_SCALE);
+    setAutoRotateMode(INITIAL_AUTO_ROTATE_MODE);
+    setAutoRotateRpm(INITIAL_AUTO_ROTATE_RPM);
+    setIsNorthLockEnabled(false);
+    setShowToneGuides(false);
+    setShowHueGuides(false);
+    setShowLightnessGuides(false);
+    setIsImageModalOpen(false);
+    setIsMultiSelectOpen(false);
+    setIsSettingsOpen(false);
+    setActiveOverlay(null);
+    setIsResetDialogOpen(false);
+    setInitialViewState(defaultViewState);
+    viewStateRef.current = defaultViewState;
+    sceneControlsRef.current?.applyViewState(defaultViewState);
+    isHydratedRef.current = true;
+    savePersistedAppState(createDefaultPersistedState());
+  };
+
   const handlePickedImage = async (file: File) => {
     const [nextAnalysis, persistedImageAssets] = await Promise.all([
       analyzeImageToPccs(file, pccsLabPalette),
@@ -827,7 +1042,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <main className="app-main">
-        <section className="viewer-stage">
+        <section ref={viewerStageRef} className="viewer-stage">
           <div
             ref={viewerInteractionRef}
             className="viewer-card viewer-interaction-surface"
@@ -860,6 +1075,7 @@ export default function App() {
               initialViewState={initialViewState}
               onViewStateChange={handleSceneViewStateChange}
               keyboardInput={viewerKeyboardInput}
+              onSelectedPointScreenPositionChange={setSelectedPointScreenPosition}
               onSelectPoint={setSelectedId}
               onClearSelection={() => setSelectedId(null)}
             />
@@ -982,6 +1198,7 @@ export default function App() {
               onToggleToneGuides={() => setShowToneGuides((current) => !current)}
               onToggleHueGuides={() => setShowHueGuides((current) => !current)}
               onToggleLightnessGuides={() => setShowLightnessGuides((current) => !current)}
+              onRequestReset={() => setIsResetDialogOpen(true)}
               onToneChange={(value) => {
                 if (value) {
                   clearImageHighlight();
@@ -1037,8 +1254,35 @@ export default function App() {
             />
           </section>
 
-          <div className={`info-overlay ${selectedPoint ? "is-visible" : ""}`}>
+          {isInfoPanelVisible && infoConnectorPath ? (
+            <svg
+              className={`info-connector-overlay ${isInfoPanelEntering ? "is-entering" : ""}`}
+              viewBox={`0 0 ${viewerStageRef.current?.clientWidth ?? 1} ${viewerStageRef.current?.clientHeight ?? 1}`}
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path
+                className="info-connector-path info-connector-path-shadow"
+                d={infoConnectorPath}
+                pathLength={1}
+                style={{ stroke: selectedPoint?.hex ?? "#fffaf1" }}
+              />
+              <path
+                className="info-connector-path"
+                d={infoConnectorPath}
+                pathLength={1}
+                style={{ stroke: selectedPoint?.hex ?? "#fffaf1" }}
+              />
+            </svg>
+          ) : null}
+
+          <div
+            className={`info-overlay ${selectedPoint ? "is-visible" : ""} ${isInfoPanelEntering ? "is-entering" : ""} ${
+              isInfoPanelContentVisible ? "is-content-visible" : ""
+            }`}
+          >
             <ColorInfoPanel
+              panelRef={infoPanelRef}
               selectedPoint={selectedPoint}
               onSwipeNavigate={handleInfoPanelSwipeNavigate}
               onFocusPanel={deactivateViewerKeyboardControl}
@@ -1156,6 +1400,37 @@ export default function App() {
                 />
               </div>
             </>
+          ) : null}
+
+          {isResetDialogOpen ? (
+            <div className="confirm-reset-layer" onClick={() => setIsResetDialogOpen(false)}>
+              <div
+                className="confirm-reset-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="confirm-reset-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <h2 id="confirm-reset-title" className="confirm-reset-title">
+                  設定を初期化しますか？
+                </h2>
+                <p className="confirm-reset-body">
+                  強調表示、補助線、球サイズ、回転設定、画像選択などを初期状態に戻します。
+                </p>
+                <div className="confirm-reset-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setIsResetDialogOpen(false)}
+                  >
+                    キャンセル
+                  </button>
+                  <button type="button" className="primary-button" onClick={resetToInitialState}>
+                    初期化する
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : null}
         </section>
       </main>

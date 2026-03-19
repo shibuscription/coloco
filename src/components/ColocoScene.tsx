@@ -1,5 +1,5 @@
-import { forwardRef, Suspense, useEffect, useMemo, useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import { forwardRef, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import { Spherical, Vector3 } from "three";
 import {
@@ -52,9 +52,67 @@ type ColocoSceneProps = {
     up: boolean;
     down: boolean;
   };
+  onSelectedPointScreenPositionChange?: (position: { x: number; y: number; visible: boolean } | null) => void;
   onSelectPoint: (id: string) => void;
   onClearSelection: () => void;
 };
+
+type SelectionPointTrackerProps = {
+  selectedPoint: PccsRenderablePoint | null;
+  onChange?: (position: { x: number; y: number; visible: boolean } | null) => void;
+};
+
+function SelectionPointTracker({ selectedPoint, onChange }: SelectionPointTrackerProps) {
+  const { camera, size } = useThree();
+  const lastPayloadRef = useRef<string | null>(null);
+  const worldPositionRef = useRef(new Vector3());
+  const projectedRef = useRef(new Vector3());
+
+  useFrame(() => {
+    if (!onChange) {
+      return;
+    }
+
+    if (!selectedPoint) {
+      if (lastPayloadRef.current !== "null") {
+        lastPayloadRef.current = "null";
+        onChange(null);
+      }
+      return;
+    }
+
+    worldPositionRef.current.set(
+      selectedPoint.position.x,
+      selectedPoint.position.y + SCENE_GROUP_OFFSET_Y,
+      selectedPoint.position.z,
+    );
+    projectedRef.current.copy(worldPositionRef.current).project(camera);
+
+    const visible =
+      projectedRef.current.z >= -1 &&
+      projectedRef.current.z <= 1 &&
+      projectedRef.current.x >= -1.2 &&
+      projectedRef.current.x <= 1.2 &&
+      projectedRef.current.y >= -1.2 &&
+      projectedRef.current.y <= 1.2;
+
+    const nextPayload = {
+      x: (projectedRef.current.x * 0.5 + 0.5) * size.width,
+      y: (-projectedRef.current.y * 0.5 + 0.5) * size.height,
+      visible,
+    };
+    const serialized = `${Math.round(nextPayload.x)}:${Math.round(nextPayload.y)}:${visible}`;
+
+    if (serialized === lastPayloadRef.current) {
+      return;
+    }
+
+    lastPayloadRef.current = serialized;
+    onChange(nextPayload);
+  });
+
+  return null;
+}
 
 export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(function ColocoScene({
   points,
@@ -70,6 +128,7 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
   initialViewState = null,
   onViewStateChange,
   keyboardInput,
+  onSelectedPointScreenPositionChange,
   onSelectPoint,
   onClearSelection,
 }: ColocoSceneProps, ref) {
@@ -141,6 +200,7 @@ export const ColocoScene = forwardRef<SceneControlsHandle, ColocoSceneProps>(fun
             onSelectPoint={onSelectPoint}
           />
         </group>
+        <SelectionPointTracker selectedPoint={points.find((point) => point.id === selectedId) ?? null} onChange={onSelectedPointScreenPositionChange} />
       </Suspense>
       <SceneControls
         ref={ref}

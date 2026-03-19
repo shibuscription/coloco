@@ -55,6 +55,11 @@ body {
   min-height: 100vh;
 }
 
+body.is-multi-select-bulk-selecting {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 button,
 select {
   font: inherit;
@@ -327,8 +332,65 @@ select {
 
 .panel-action-row {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
   margin-bottom: 14px;
+}
+
+.panel-action-left {
+  display: inline-flex;
+  align-items: center;
+}
+
+.panel-action-row .panel-action-buttons {
+  margin-left: auto;
+}
+
+.panel-action-button-reset {
+  background: rgba(255, 252, 247, 0.78);
+}
+
+.confirm-reset-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 16px;
+  background: rgba(43, 37, 29, 0.22);
+}
+
+.confirm-reset-dialog {
+  width: min(420px, calc(100% - 32px));
+  padding: 20px;
+  border: 1px solid rgba(82, 59, 29, 0.14);
+  border-radius: 22px;
+  background: rgba(255, 252, 247, 0.92);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 48px rgba(43, 37, 29, 0.18);
+}
+
+.confirm-reset-title {
+  margin: 0;
+  font-size: 1.04rem;
+  font-weight: 700;
+}
+
+.confirm-reset-body {
+  margin: 10px 0 0;
+  color: #5f503f;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.confirm-reset-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
 }
 
 .panel-action-buttons {
@@ -612,6 +674,12 @@ select {
   pointer-events: auto;
 }
 
+.multi-select-card.is-bulk-selecting,
+.multi-select-body.is-bulk-selecting {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
 .analysis-modal-body {
   display: flex;
   flex: 1;
@@ -649,8 +717,8 @@ select {
   left: 0;
   right: auto;
   min-width: 280px;
-  width: max-content;
-  max-width: min(320px, calc(100vw - 48px));
+  width: 100%;
+  max-width: min(320px, calc(100vw - 32px));
 }
 
 .multi-select-dropdown-menu .custom-dropdown-option {
@@ -660,19 +728,29 @@ select {
   padding-right: 38px;
 }
 
+.multi-select-dropdown-portal {
+  z-index: 80;
+  pointer-events: auto;
+}
+
 .multi-select-scroll {
   flex: 1 1 auto;
   min-height: 0;
   margin-top: 12px;
   overflow: auto;
-  padding-right: 4px;
+  padding-right: 0;
 }
 
 .multi-select-scroll.is-bulk-selecting {
   touch-action: none;
-  overscroll-behavior: contain;
+  overscroll-behavior: none;
+  overflow: hidden;
   box-shadow: inset 0 0 0 1px rgba(188, 133, 64, 0.26);
   border-radius: 14px;
+}
+
+.multi-select-scroll.is-bulk-selecting .analysis-tile {
+  touch-action: none;
 }
 
 .multi-select-grid {
@@ -956,18 +1034,73 @@ select {
   bottom: 16px;
   z-index: 18;
   width: min(360px, calc(100% - 32px));
-  transform: translateY(calc(100% + 20px));
+  transform: translate3d(0, 0, 0) scale(0.985);
+  transform-origin: left center;
   opacity: 0;
   pointer-events: none;
   transition:
-    transform 240ms ease,
-    opacity 240ms ease;
+    transform 180ms ease,
+    opacity 180ms ease;
 }
 
 .info-overlay.is-visible {
-  transform: translateY(0);
-  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(0.992);
+  opacity: 0;
   pointer-events: auto;
+}
+
+.info-overlay.is-visible.is-content-visible {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+}
+
+.info-overlay.is-entering,
+.info-overlay.is-visible.is-content-visible {
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.82, 0.2, 1),
+    opacity 180ms ease;
+}
+
+.info-connector-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 17;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.info-connector-path {
+  fill: none;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.88;
+  filter: saturate(1.05) brightness(1.03);
+}
+
+.info-connector-path-shadow {
+  stroke-width: 5;
+  opacity: 0.18;
+  filter: blur(0.6px) brightness(1.08);
+}
+
+.info-connector-overlay.is-entering .info-connector-path,
+.info-connector-overlay.is-entering .info-connector-path-shadow {
+  animation: info-connector-draw 220ms cubic-bezier(0.2, 0.82, 0.2, 1);
+}
+
+@keyframes info-connector-draw {
+  from {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+
+  to {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
 }
 
 .info-panel {
@@ -1273,6 +1406,11 @@ select {
     padding: 6px;
   }
 
+  .multi-select-grid .analysis-tile {
+    min-height: 36px;
+    padding: 4px 6px;
+  }
+
   .multi-select-row {
     grid-template-columns: repeat(12, minmax(54px, 54px));
     gap: 6px;
@@ -1284,7 +1422,8 @@ select {
   }
 
   .multi-select-dropdown-menu {
-    min-width: min(220px, calc(100vw - 48px));
+    min-width: 220px;
+    max-width: calc(100vw - 32px);
   }
 
   .analysis-tile-text strong {
@@ -1294,6 +1433,7 @@ select {
   .analysis-tile-text small {
     font-size: 0.62rem;
   }
+
 }
 
 @media (min-width: 981px) {
@@ -1312,11 +1452,41 @@ select {
   }
 
   .multi-select-shell {
-    width: min(920px, calc(100% - 32px));
+    width: min(900px, calc(100% - 32px));
+    bottom: auto;
+    height: auto;
+    max-height: calc(100dvh - 84px);
   }
 
   .multi-select-scroll {
     overflow-x: hidden;
     overflow-y: auto;
+    flex: 0 1 auto;
+    max-height: calc(100dvh - 168px);
   }
+
+  .multi-select-card {
+    height: auto;
+    max-height: inherit;
+  }
+
+  .multi-select-body {
+    flex: 0 1 auto;
+  }
+
+  .multi-select-grid .analysis-tile {
+    min-height: 34px;
+    padding: 3px 6px;
+    border-radius: 10px;
+  }
+
+  .multi-select-grid .analysis-tile-text {
+    gap: 2px;
+  }
+
+  .multi-select-grid .analysis-tile-text strong {
+    font-size: 0.64rem;
+    line-height: 1.1;
+  }
+
 }
