@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { pccsAchromatic, pccsPoints } from "../data";
 import type { AchromaticToneCode, ChromaticToneCode } from "../data";
 
@@ -13,7 +13,6 @@ type MultiSelectHighlightPanelProps = {
 };
 
 type ListSelectableTone = ChromaticToneCode | "achromatic";
-
 type Point = { x: number; y: number };
 
 type SelectableTile = {
@@ -42,7 +41,9 @@ type DropdownPosition = {
 
 const LONG_PRESS_DELAY_MS = 360;
 const LONG_PRESS_CANCEL_MOVE_THRESHOLD = 10;
-const AUTO_SCROLL_EDGE_THRESHOLD = 44;
+const AUTO_SCROLL_TOP_EDGE_THRESHOLD = 44;
+const AUTO_SCROLL_BOTTOM_EDGE_THRESHOLD = 88;
+const AUTO_SCROLL_SIDE_EDGE_THRESHOLD = 44;
 const AUTO_SCROLL_STEP_PX = 9;
 
 const EVEN_HUE_INDICES = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24] as const;
@@ -154,15 +155,14 @@ export function MultiSelectHighlightPanel({
   onClearAll,
   onFocusPanel,
 }: MultiSelectHighlightPanelProps) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const listPickerRef = useRef<HTMLDivElement>(null);
   const listPickerButtonRef = useRef<HTMLButtonElement>(null);
   const dropdownPortalRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
-  const pendingTilePressRef = useRef<{ pointerId: number; tileId: string; startPoint: Point } | null>(null);
+  const pendingDragRef = useRef<{ pointerId: number; tileId: string; startPoint: Point } | null>(null);
   const dragSelectionRef = useRef<{
     pointerId: number;
     selected: boolean;
@@ -222,6 +222,61 @@ export function MultiSelectHighlightPanel({
     setDropdownPosition(getDropdownPosition(trigger));
   };
 
+  useEffect(() => {
+    if (!listPickerStage) {
+      setDropdownPosition(null);
+      return;
+    }
+
+    updateDropdownPosition();
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [listPickerStage, pendingTone]);
+
+  useEffect(() => {
+    const handlePointerDownOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      const insideTrigger = listPickerRef.current?.contains(target) ?? false;
+      const insideDropdown = dropdownPortalRef.current?.contains(target) ?? false;
+      if (!insideTrigger && !insideDropdown) {
+        setListPickerStage(null);
+        setPendingTone(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDownOutside);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDownOutside);
+    };
+  }, []);
+
+  useEffect(() => () => endBulkSelection(), []);
+
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    const preventTouchScrollDuringBulkSelection = (event: TouchEvent) => {
+      if (!dragSelectionRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+    };
+
+    scrollElement.addEventListener("touchmove", preventTouchScrollDuringBulkSelection, { passive: false });
+    return () => {
+      scrollElement.removeEventListener("touchmove", preventTouchScrollDuringBulkSelection);
+    };
+  }, []);
+
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current !== null) {
       window.clearTimeout(longPressTimerRef.current);
@@ -229,7 +284,7 @@ export function MultiSelectHighlightPanel({
     }
   };
 
-  const clearAutoScroll = () => {
+  const stopAutoScroll = () => {
     if (autoScrollFrameRef.current !== null) {
       window.cancelAnimationFrame(autoScrollFrameRef.current);
       autoScrollFrameRef.current = null;
@@ -237,9 +292,9 @@ export function MultiSelectHighlightPanel({
   };
 
   const endBulkSelection = () => {
-    clearAutoScroll();
     clearLongPressTimer();
-    pendingTilePressRef.current = null;
+    stopAutoScroll();
+    pendingDragRef.current = null;
     dragSelectionRef.current = null;
     setIsBulkSelecting(false);
   };
@@ -275,41 +330,38 @@ export function MultiSelectHighlightPanel({
     applyBulkSelectionToTile(getTileIdFromPoint(dragSelection.lastClientX, dragSelection.lastClientY));
 
     const rect = scrollElement.getBoundingClientRect();
-    let deltaX = 0;
-    let deltaY = 0;
+    let scrollDeltaX = 0;
+    let scrollDeltaY = 0;
 
-    if (dragSelection.lastClientX <= rect.left + AUTO_SCROLL_EDGE_THRESHOLD) {
-      deltaX = -AUTO_SCROLL_STEP_PX;
-    } else if (dragSelection.lastClientX >= rect.right - AUTO_SCROLL_EDGE_THRESHOLD) {
-      deltaX = AUTO_SCROLL_STEP_PX;
+    if (dragSelection.lastClientX < rect.left + AUTO_SCROLL_SIDE_EDGE_THRESHOLD) {
+      scrollDeltaX = -AUTO_SCROLL_STEP_PX;
+    } else if (dragSelection.lastClientX > rect.right - AUTO_SCROLL_SIDE_EDGE_THRESHOLD) {
+      scrollDeltaX = AUTO_SCROLL_STEP_PX;
     }
 
-    if (dragSelection.lastClientY <= rect.top + AUTO_SCROLL_EDGE_THRESHOLD) {
-      deltaY = -AUTO_SCROLL_STEP_PX;
-    } else if (dragSelection.lastClientY >= rect.bottom - AUTO_SCROLL_EDGE_THRESHOLD) {
-      deltaY = AUTO_SCROLL_STEP_PX;
+    if (dragSelection.lastClientY < rect.top + AUTO_SCROLL_TOP_EDGE_THRESHOLD) {
+      scrollDeltaY = -AUTO_SCROLL_STEP_PX;
+    } else if (dragSelection.lastClientY > rect.bottom - AUTO_SCROLL_BOTTOM_EDGE_THRESHOLD) {
+      scrollDeltaY = AUTO_SCROLL_STEP_PX;
     }
 
-    if (deltaX !== 0 || deltaY !== 0) {
+    if (scrollDeltaX !== 0 || scrollDeltaY !== 0) {
       const previousScrollLeft = scrollElement.scrollLeft;
       const previousScrollTop = scrollElement.scrollTop;
-      scrollElement.scrollLeft += deltaX;
-      scrollElement.scrollTop += deltaY;
+      scrollElement.scrollLeft += scrollDeltaX;
+      scrollElement.scrollTop += scrollDeltaY;
       applyBulkSelectionToTile(getTileIdFromPoint(dragSelection.lastClientX, dragSelection.lastClientY));
 
       if (
-        scrollElement.scrollLeft === previousScrollLeft &&
-        scrollElement.scrollTop === previousScrollTop
+        scrollElement.scrollLeft !== previousScrollLeft ||
+        scrollElement.scrollTop !== previousScrollTop
       ) {
-        autoScrollFrameRef.current = null;
+        autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
         return;
       }
-    } else {
-      autoScrollFrameRef.current = null;
-      return;
     }
 
-    autoScrollFrameRef.current = window.requestAnimationFrame(runAutoScroll);
+    autoScrollFrameRef.current = null;
   };
 
   const ensureAutoScroll = () => {
@@ -333,66 +385,18 @@ export function MultiSelectHighlightPanel({
     ensureAutoScroll();
   };
 
-  useEffect(() => {
-    const handleTouchMove = (event: TouchEvent) => {
-      if (dragSelectionRef.current) {
-        event.preventDefault();
-      }
-    };
-
-    document.addEventListener("touchmove", handleTouchMove, { passive: false });
-
-    return () => {
-      document.removeEventListener("touchmove", handleTouchMove);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isBulkSelecting) {
-      document.body.classList.add("is-multi-select-bulk-selecting");
-    } else {
-      document.body.classList.remove("is-multi-select-bulk-selecting");
-    }
-
-    return () => {
-      document.body.classList.remove("is-multi-select-bulk-selecting");
-    };
-  }, [isBulkSelecting]);
-
-  useEffect(() => () => endBulkSelection(), []);
-
-  useEffect(() => {
-    if (!listPickerStage) {
-      setDropdownPosition(null);
+  const handleTileClick = (event: ReactMouseEvent<HTMLButtonElement>, tileId: string) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
       return;
     }
 
-    updateDropdownPosition();
-    window.addEventListener("resize", updateDropdownPosition);
-    window.addEventListener("scroll", updateDropdownPosition, true);
+    event.stopPropagation();
 
-    return () => {
-      window.removeEventListener("resize", updateDropdownPosition);
-      window.removeEventListener("scroll", updateDropdownPosition, true);
-    };
-  }, [listPickerStage, pendingTone]);
-
-  useEffect(() => {
-    const handlePointerDownOutside = (event: PointerEvent) => {
-      const target = event.target as Node;
-      const insideTrigger = listPickerRef.current?.contains(target) ?? false;
-      const insideDropdown = dropdownPortalRef.current?.contains(target) ?? false;
-      if (!insideTrigger && !insideDropdown) {
-        setListPickerStage(null);
-        setPendingTone(null);
-      }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDownOutside);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDownOutside);
-    };
-  }, []);
+    // Stage 1 reset: keep tile interaction to a single, explicit tap/click toggle.
+    // Stage 2 keeps tap stable and layers only a minimal drag-selection mode on top.
+    onToggleTile(tileId);
+  };
 
   const handleTilePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, tileId: string) => {
     onFocusPanel();
@@ -404,24 +408,26 @@ export function MultiSelectHighlightPanel({
     clearLongPressTimer();
     endBulkSelection();
 
-    const startPoint = { x: event.clientX, y: event.clientY };
-    pendingTilePressRef.current = {
+    pendingDragRef.current = {
       pointerId: event.pointerId,
       tileId,
-      startPoint,
+      startPoint: { x: event.clientX, y: event.clientY },
     };
 
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    const startPoint = { x: event.clientX, y: event.clientY };
     longPressTimerRef.current = window.setTimeout(() => {
-      const pending = pendingTilePressRef.current;
-      if (!pending || pending.pointerId !== event.pointerId || pending.tileId !== tileId) {
+      const pendingDrag = pendingDragRef.current;
+      if (!pendingDrag || pendingDrag.pointerId !== event.pointerId || pendingDrag.tileId !== tileId) {
         return;
       }
 
-      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }
       beginBulkSelection(event.pointerId, tileId, startPoint.x, startPoint.y);
-      pendingTilePressRef.current = null;
+      pendingDragRef.current = null;
+      clearLongPressTimer();
     }, LONG_PRESS_DELAY_MS);
   };
 
@@ -441,18 +447,18 @@ export function MultiSelectHighlightPanel({
       return;
     }
 
-    const pendingPress = pendingTilePressRef.current;
-    if (!pendingPress || pendingPress.pointerId !== event.pointerId) {
+    const pendingDrag = pendingDragRef.current;
+    if (!pendingDrag || pendingDrag.pointerId !== event.pointerId) {
       return;
     }
 
-    const moveDistance = getDistance(pendingPress.startPoint, {
+    const moveDistance = getDistance(pendingDrag.startPoint, {
       x: event.clientX,
       y: event.clientY,
     });
     if (moveDistance > LONG_PRESS_CANCEL_MOVE_THRESHOLD) {
       clearLongPressTimer();
-      pendingTilePressRef.current = null;
+      pendingDragRef.current = null;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
@@ -469,7 +475,7 @@ export function MultiSelectHighlightPanel({
     }
 
     const wasBulkSelecting = dragSelectionRef.current?.pointerId === event.pointerId;
-    const wasPendingPress = pendingTilePressRef.current?.pointerId === event.pointerId;
+    const wasPendingDrag = pendingDragRef.current?.pointerId === event.pointerId;
 
     if (wasBulkSelecting) {
       event.preventDefault();
@@ -478,19 +484,10 @@ export function MultiSelectHighlightPanel({
       return;
     }
 
-    if (wasPendingPress) {
+    if (wasPendingDrag) {
       clearLongPressTimer();
-      pendingTilePressRef.current = null;
+      pendingDragRef.current = null;
     }
-  };
-
-  const handleTileClick = (tileId: string) => {
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      return;
-    }
-
-    onToggleTile(tileId);
   };
 
   const handleOpenListPicker = () => {
@@ -603,12 +600,8 @@ export function MultiSelectHighlightPanel({
 
   return (
     <>
-      <div
-        ref={cardRef}
-        className={`multi-select-card ${isBulkSelecting ? "is-bulk-selecting" : ""}`}
-        onPointerDown={onFocusPanel}
-      >
-        <div className={`multi-select-body ${isBulkSelecting ? "is-bulk-selecting" : ""}`}>
+      <div className="multi-select-card" onPointerDown={onFocusPanel}>
+        <div className="multi-select-body">
           <div className="multi-select-header">
             <div ref={listPickerRef} className="multi-select-header-actions">
               <div className="multi-select-list-picker">
@@ -633,10 +626,7 @@ export function MultiSelectHighlightPanel({
             </div>
           </div>
 
-          <div
-            ref={scrollRef}
-            className={`multi-select-scroll ${isBulkSelecting ? "is-bulk-selecting" : ""}`}
-          >
+          <div ref={scrollRef} className={`multi-select-scroll ${isBulkSelecting ? "is-bulk-selecting" : ""}`}>
             <div className="multi-select-grid">
               {tileRows.map((row) => (
                 <div key={row.key} className={`multi-select-row ${row.key === "achromatic" ? "is-achromatic" : ""}`}>
@@ -652,7 +642,7 @@ export function MultiSelectHighlightPanel({
                           background: tile.hex,
                           color: getContrastTextColor(tile.hex),
                         }}
-                        onClick={() => handleTileClick(tile.id)}
+                        onClick={(event) => handleTileClick(event, tile.id)}
                         onPointerDown={(event) => handleTilePointerDown(event, tile.id)}
                         onPointerMove={handleTilePointerMove}
                         onPointerUp={handleTilePointerEnd}

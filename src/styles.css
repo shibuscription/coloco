@@ -55,11 +55,6 @@ body {
   min-height: 100vh;
 }
 
-body.is-multi-select-bulk-selecting {
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-
 button,
 select {
   font: inherit;
@@ -674,12 +669,6 @@ select {
   pointer-events: auto;
 }
 
-.multi-select-card.is-bulk-selecting,
-.multi-select-body.is-bulk-selecting {
-  touch-action: none;
-  overscroll-behavior: none;
-}
-
 .analysis-modal-body {
   display: flex;
   flex: 1;
@@ -743,14 +732,9 @@ select {
 
 .multi-select-scroll.is-bulk-selecting {
   touch-action: none;
-  overscroll-behavior: none;
-  overflow: hidden;
+  overscroll-behavior: contain;
   box-shadow: inset 0 0 0 1px rgba(188, 133, 64, 0.26);
   border-radius: 14px;
-}
-
-.multi-select-scroll.is-bulk-selecting .analysis-tile {
-  touch-action: none;
 }
 
 .multi-select-grid {

@@ -1036,20 +1036,6 @@ export default function App() {
     applyMultiSelectHighlight(nextIds);
   };
 
-  const handleSetMultiSelectTiles = (pccsIds: string[], selected: boolean) => {
-    if (pccsIds.length === 0) {
-      return;
-    }
-
-    const idSet = new Set(pccsIds);
-    const currentIds = multiSelectedIdsRef.current;
-    const nextIds = selected
-      ? Array.from(new Set([...currentIds, ...pccsIds]))
-      : currentIds.filter((id) => !idSet.has(id));
-
-    applyMultiSelectHighlight(nextIds);
-  };
-
   return (
     <div className="app-shell">
       <main className="app-main">
@@ -1401,8 +1387,17 @@ export default function App() {
                     handleToggleMultiSelectTile(pccsId);
                   }}
                   onSetTilesSelected={(pccsIds, selected) => {
+                    if (pccsIds.length === 0) {
+                      return;
+                    }
+
                     setActiveOverlay("multi");
-                    handleSetMultiSelectTiles(pccsIds, selected);
+                    const idSet = new Set(pccsIds);
+                    const nextIds = selected
+                      ? Array.from(new Set([...multiSelectedIdsRef.current, ...pccsIds]))
+                      : multiSelectedIdsRef.current.filter((id) => !idSet.has(id));
+
+                    applyMultiSelectHighlight(nextIds);
                   }}
                   onClearAll={() => {
                     setActiveOverlay("multi");

@@ -137,7 +137,8 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
   const [dropdownMaxHeight, setDropdownMaxHeight] = useState<number | undefined>(undefined);
   const selectedOption = options.find((option) => option.value === value) ?? options[0];
   const textColor = getContrastTextColor(selectedOption.swatchHex);
-  const keyboardOptions = options.filter((option) => option.value !== "");
+  // Keep "選択しない" available for pointer selection, but skip it in keyboard cycling.
+  const keyboardOptions = options.filter((option) => option.value.trim() !== "");
   const selectedKeyboardIndex = keyboardOptions.findIndex((option) => option.value === value);
 
   const moveSelection = (direction: -1 | 1) => {
