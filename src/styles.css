@@ -55,6 +55,12 @@ body {
   min-height: 100vh;
 }
 
+html.fullscreen-color-card-scroll-lock,
+body.fullscreen-color-card-scroll-lock {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 button,
 select {
   font: inherit;
@@ -1127,6 +1133,13 @@ select {
   gap: 12px;
 }
 
+.color-chip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .color-chip-toggle {
   display: inline-flex;
   align-items: center;
@@ -1140,16 +1153,129 @@ select {
   flex: 0 0 auto;
 }
 
+.color-chip-fullscreen-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(82, 59, 29, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.24);
+  color: inherit;
+  flex: 0 0 auto;
+}
+
+.fullscreen-color-card-icon {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.fullscreen-color-card {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding:
+    calc(18px + env(safe-area-inset-top))
+    calc(18px + env(safe-area-inset-right))
+    calc(24px + env(safe-area-inset-bottom))
+    calc(18px + env(safe-area-inset-left));
+  overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.fullscreen-color-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.08));
+  pointer-events: none;
+}
+
+.fullscreen-color-card-topbar,
+.fullscreen-color-card-content {
+  position: relative;
+  z-index: 1;
+}
+
+.fullscreen-color-card-topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fullscreen-color-card-brand {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  pointer-events: none;
+}
+
+.fullscreen-color-card-brand .app-wordmark-text {
+  color: currentColor;
+  opacity: 0.92;
+}
+
+.fullscreen-color-card-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 250, 241, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.16);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 24px rgba(43, 37, 29, 0.12);
+}
+
+.fullscreen-color-card-content {
+  display: grid;
+  gap: 8px;
+  align-content: end;
+  max-width: min(520px, 100%);
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+
+.fullscreen-color-card-label {
+  font-size: clamp(2rem, 8vw, 4rem);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: 0.01em;
+}
+
+.fullscreen-color-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 0.92rem;
+  opacity: 0.84;
+}
+
 .color-chip-toggle-icon {
   display: inline-block;
   font-size: 0.9rem;
   line-height: 1;
-  transform: rotate(180deg);
+  transform: rotate(0deg);
   transition: transform 180ms ease;
 }
 
 .color-chip-toggle-icon.is-open {
-  transform: rotate(0deg);
+  transform: rotate(180deg);
 }
 
 .info-grid {
@@ -1378,6 +1504,33 @@ select {
   .color-chip-large {
     height: 58px;
     font-size: 1.18rem;
+  }
+
+  .fullscreen-color-card {
+    padding:
+      calc(14px + env(safe-area-inset-top))
+      calc(14px + env(safe-area-inset-right))
+      calc(18px + env(safe-area-inset-bottom))
+      calc(14px + env(safe-area-inset-left));
+  }
+
+  .fullscreen-color-card-close {
+    width: 38px;
+    height: 38px;
+  }
+
+  .fullscreen-color-card-content {
+    gap: 6px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .fullscreen-color-card-label {
+    font-size: clamp(1.8rem, 10vw, 3rem);
+  }
+
+  .fullscreen-color-card-meta {
+    font-size: 0.82rem;
+    gap: 8px 12px;
   }
 
   .analysis-grid {

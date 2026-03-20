@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { PccsRenderablePoint } from "../utils/pccs3d";
 import type { SwipeDirection } from "../utils/pccsNavigation";
+import { FullscreenEntryButton } from "./FullscreenColorCard";
 
 type ColorInfoPanelProps = {
   selectedPoint: PccsRenderablePoint | null;
   onSwipeNavigate: (direction: SwipeDirection) => void;
+  onEnterFullscreen?: () => void;
   onFocusPanel?: () => void;
   panelRef?: RefObject<HTMLElement | null>;
 };
@@ -28,7 +30,13 @@ const getContrastTextColor = (hex: string): string => {
   return luminance > 145 ? "#2b251d" : "#fffaf1";
 };
 
-export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel, panelRef }: ColorInfoPanelProps) {
+export function ColorInfoPanel({
+  selectedPoint,
+  onSwipeNavigate,
+  onEnterFullscreen,
+  onFocusPanel,
+  panelRef,
+}: ColorInfoPanelProps) {
   const swipeStartRef = useRef<Point | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
   const [isMobileView, setIsMobileView] = useState(() =>
@@ -187,25 +195,30 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel, p
       >
         <div className="color-chip-content">
           <strong>{selectedPoint.label}</strong>
-          {isMobileView ? (
-            <button
-              type="button"
-              className="color-chip-toggle"
-              aria-label={showDetails ? "色情報を閉じる" : "色情報を開く"}
-              aria-expanded={showDetails}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                toggleMobileDetails();
-              }}
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-            >
-              <span className={`color-chip-toggle-icon ${showDetails ? "is-open" : ""}`}>▼</span>
-            </button>
-          ) : null}
+          <div className="color-chip-actions">
+            {onEnterFullscreen ? (
+              <FullscreenEntryButton colorHex={selectedPoint.hex} onClick={onEnterFullscreen} />
+            ) : null}
+            {isMobileView ? (
+              <button
+                type="button"
+                className="color-chip-toggle"
+                aria-label={showDetails ? "色情報を閉じる" : "色情報を開く"}
+                aria-expanded={showDetails}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleMobileDetails();
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                <span className={`color-chip-toggle-icon ${showDetails ? "is-open" : ""}`}>▼</span>
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -232,7 +245,7 @@ export function ColorInfoPanel({ selectedPoint, onSwipeNavigate, onFocusPanel, p
                       event.stopPropagation();
                     }}
                   >
-                    {copiedField === row.key ? "✔" : "⧉"}
+                    {copiedField === row.key ? "✓" : "⧉"}
                   </button>
                 </div>
               </dd>

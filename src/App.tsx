@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Spherical, Vector3 } from "three";
 import { ColocoScene } from "./components/ColocoScene";
 import { ColorInfoPanel } from "./components/ColorInfoPanel";
+import { FullscreenColorCard } from "./components/FullscreenColorCard";
 import { HighlightControls } from "./components/HighlightControls";
 import { ImageAnalysisPanel } from "./components/ImageAnalysisPanel";
 import { MultiSelectHighlightPanel } from "./components/MultiSelectHighlightPanel";
@@ -195,6 +196,7 @@ export default function App() {
   const [infoPanelAnchor, setInfoPanelAnchor] = useState<{ x: number; y: number } | null>(null);
   const [isInfoPanelEntering, setIsInfoPanelEntering] = useState(false);
   const [isInfoPanelContentVisible, setIsInfoPanelContentVisible] = useState(false);
+  const [isFullscreenColorCardOpen, setIsFullscreenColorCardOpen] = useState(false);
 
   useEffect(() => {
     multiSelectedIdsRef.current = multiSelectedIds;
@@ -202,6 +204,12 @@ export default function App() {
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
   const isInfoPanelVisible = Boolean(selectedPoint);
+
+  useEffect(() => {
+    if (!selectedPoint) {
+      setIsFullscreenColorCardOpen(false);
+    }
+  }, [selectedPoint]);
 
   useEffect(() => {
     if (!isInfoPanelVisible) {
@@ -241,7 +249,7 @@ export default function App() {
     const updateInfoPanelAnchor = () => {
       const panelElement = infoPanelRef.current;
       const stageElement = viewerStageRef.current;
-      if (!panelElement || !stageElement || !isInfoPanelVisible) {
+      if (!panelElement || !stageElement || !isInfoPanelVisible || isFullscreenColorCardOpen) {
         setInfoPanelAnchor(null);
         return;
       }
@@ -269,7 +277,7 @@ export default function App() {
       window.removeEventListener("resize", updateInfoPanelAnchor);
       window.removeEventListener("scroll", updateInfoPanelAnchor, true);
     };
-  }, [isInfoPanelVisible, selectedId, isMobileView]);
+  }, [isInfoPanelVisible, selectedId, isMobileView, isFullscreenColorCardOpen]);
 
   const infoConnectorPath = useMemo(() => {
     if (!selectedPointScreenPosition?.visible || !infoPanelAnchor) {
@@ -1251,7 +1259,7 @@ export default function App() {
             />
           </section>
 
-          {isInfoPanelVisible && infoConnectorPath ? (
+          {isInfoPanelVisible && !isFullscreenColorCardOpen && infoConnectorPath ? (
             <svg
               className={`info-connector-overlay ${isInfoPanelEntering ? "is-entering" : ""}`}
               viewBox={`0 0 ${viewerStageRef.current?.clientWidth ?? 1} ${viewerStageRef.current?.clientHeight ?? 1}`}
@@ -1273,18 +1281,29 @@ export default function App() {
             </svg>
           ) : null}
 
-          <div
-            className={`info-overlay ${selectedPoint ? "is-visible" : ""} ${isInfoPanelEntering ? "is-entering" : ""} ${
-              isInfoPanelContentVisible ? "is-content-visible" : ""
-            }`}
-          >
-            <ColorInfoPanel
-              panelRef={infoPanelRef}
+          {!isFullscreenColorCardOpen ? (
+            <div
+              className={`info-overlay ${selectedPoint ? "is-visible" : ""} ${isInfoPanelEntering ? "is-entering" : ""} ${
+                isInfoPanelContentVisible ? "is-content-visible" : ""
+              }`}
+            >
+              <ColorInfoPanel
+                panelRef={infoPanelRef}
+                selectedPoint={selectedPoint}
+                onSwipeNavigate={handleInfoPanelSwipeNavigate}
+                onEnterFullscreen={() => setIsFullscreenColorCardOpen(true)}
+                onFocusPanel={deactivateViewerKeyboardControl}
+              />
+            </div>
+          ) : null}
+
+          {isFullscreenColorCardOpen && selectedPoint ? (
+            <FullscreenColorCard
               selectedPoint={selectedPoint}
               onSwipeNavigate={handleInfoPanelSwipeNavigate}
-              onFocusPanel={deactivateViewerKeyboardControl}
+              onClose={() => setIsFullscreenColorCardOpen(false)}
             />
-          </div>
+          ) : null}
 
           {isImageModalOpen ? (
             <>
