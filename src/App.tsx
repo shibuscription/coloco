@@ -1064,11 +1064,11 @@ export default function App() {
 
   const handleOpenMixingOverlay = () => {
     const nextIds = multiSelectedIdsRef.current;
-    if (nextIds.length < 2 || nextIds.length > 4) {
+    if (nextIds.length < 2) {
       return;
     }
 
-    setMixingColorIds(nextIds);
+    setMixingColorIds(nextIds.slice(0, 4));
     setIsMixingOverlayOpen(true);
     setActiveOverlay("multi");
   };
@@ -1462,9 +1462,13 @@ export default function App() {
             </>
           ) : null}
 
-          {isMixingOverlayOpen ? (
-            <ColorMixingOverlay colors={mixingColors} palette={pccsLabPalette} onClose={handleCloseMixingOverlay} />
-          ) : null}
+        {isMixingOverlayOpen ? (
+          <ColorMixingOverlay
+            colors={mixingColors}
+            palette={pccsLabPalette}
+            onClose={handleCloseMixingOverlay}
+          />
+        ) : null}
 
           {isResetDialogOpen ? (
             <div className="confirm-reset-layer" onClick={() => setIsResetDialogOpen(false)}>

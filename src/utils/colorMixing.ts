@@ -10,6 +10,24 @@ export type AdditiveMixResult = {
 export type AdditiveMixMode = "linear-rgb" | "srgb-average" | "perceptual-average";
 export type SubtractiveMixMode = "multiply" | "soft-multiply" | "cmy-average";
 
+export type AdditiveTuningParams = {
+  mode: AdditiveMixMode;
+  gamma: number;
+  saturationBoost: number;
+  brightnessBias: number;
+  mixExponent: number;
+  perceptualWeight: number;
+};
+
+export type SubtractiveTuningParams = {
+  mode: SubtractiveMixMode;
+  blackInfluence: number;
+  chromaRetention: number;
+  softness: number;
+  cmyWeight: number;
+  darkeningCurve: number;
+};
+
 type MixableColor = {
   hex: string;
 };
@@ -19,6 +37,24 @@ const roundRatio = (value: number): number => Number(value.toFixed(2));
 const clampChannel = (value: number): number => Math.min(255, Math.max(0, Math.round(value)));
 
 const srgbHexToChannel = (value: string): number => Number.parseInt(value, 16);
+
+export const DEFAULT_ADDITIVE_TUNING_PARAMS: AdditiveTuningParams = {
+  mode: "linear-rgb",
+  gamma: 1,
+  saturationBoost: 1,
+  brightnessBias: 0.25,
+  mixExponent: 1.5,
+  perceptualWeight: 0.3,
+};
+
+export const DEFAULT_SUBTRACTIVE_TUNING_PARAMS: SubtractiveTuningParams = {
+  mode: "soft-multiply",
+  blackInfluence: 1,
+  chromaRetention: 1,
+  softness: 0,
+  cmyWeight: 0,
+  darkeningCurve: 1,
+};
 
 export const hexToRgb = (hex: string): AdditiveMixResult | null => {
   const normalized = hex.trim().replace("#", "");
@@ -107,6 +143,123 @@ const labToRgb = (l: number, a: number, b: number): AdditiveMixResult => {
     hex: rgbToHex(r, g, blue),
   };
 };
+
+type HslColor = {
+  h: number;
+  s: number;
+  l: number;
+};
+
+const clampUnit = (value: number): number => Math.min(1, Math.max(0, value));
+
+const rgbToHsl = ({ r, g, b }: AdditiveMixResult): HslColor => {
+  const red = clampUnit(r / 255);
+  const green = clampUnit(g / 255);
+  const blue = clampUnit(b / 255);
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const lightness = (max + min) / 2;
+
+  if (max === min) {
+    return { h: 0, s: 0, l: lightness };
+  }
+
+  const delta = max - min;
+  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  let hue = 0;
+
+  switch (max) {
+    case red:
+      hue = (green - blue) / delta + (green < blue ? 6 : 0);
+      break;
+    case green:
+      hue = (blue - red) / delta + 2;
+      break;
+    default:
+      hue = (red - green) / delta + 4;
+      break;
+  }
+
+  return {
+    h: hue / 6,
+    s: saturation,
+    l: lightness,
+  };
+};
+
+const hueToRgb = (p: number, q: number, t: number): number => {
+  let value = t;
+  if (value < 0) value += 1;
+  if (value > 1) value -= 1;
+  if (value < 1 / 6) return p + (q - p) * 6 * value;
+  if (value < 1 / 2) return q;
+  if (value < 2 / 3) return p + (q - p) * (2 / 3 - value) * 6;
+  return p;
+};
+
+const hslToRgb = ({ h, s, l }: HslColor): AdditiveMixResult => {
+  if (s === 0) {
+    const gray = clampChannel(l * 255);
+    return { r: gray, g: gray, b: gray, hex: rgbToHex(gray, gray, gray) };
+  }
+
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const r = clampChannel(hueToRgb(p, q, h + 1 / 3) * 255);
+  const g = clampChannel(hueToRgb(p, q, h) * 255);
+  const b = clampChannel(hueToRgb(p, q, h - 1 / 3) * 255);
+
+  return { r, g, b, hex: rgbToHex(r, g, b) };
+};
+
+const blendResults = (left: AdditiveMixResult, right: AdditiveMixResult, weight: number): AdditiveMixResult => {
+  const w = clampUnit(weight);
+  const inverse = 1 - w;
+  const r = clampChannel(left.r * inverse + right.r * w);
+  const g = clampChannel(left.g * inverse + right.g * w);
+  const b = clampChannel(left.b * inverse + right.b * w);
+  return { r, g, b, hex: rgbToHex(r, g, b) };
+};
+
+const adjustResultByHsl = (
+  result: AdditiveMixResult,
+  saturationBoost: number,
+  brightnessBias: number,
+): AdditiveMixResult => {
+  const hsl = rgbToHsl(result);
+  return hslToRgb({
+    h: hsl.h,
+    s: clampUnit(hsl.s * saturationBoost),
+    l: clampUnit(hsl.l + brightnessBias),
+  });
+};
+
+const applyGammaToResult = (result: AdditiveMixResult, gamma: number): AdditiveMixResult => {
+  const safeGamma = Math.max(0.01, gamma);
+  const toGamma = (channel: number) => clampChannel(clampUnit(channel / 255) ** (1 / safeGamma) * 255);
+  const r = toGamma(result.r);
+  const g = toGamma(result.g);
+  const b = toGamma(result.b);
+  return { r, g, b, hex: rgbToHex(r, g, b) };
+};
+
+const normalizeWeightsForExponent = (ratios: number[], exponent: number): number[] => {
+  const total = ratios.reduce((sum, ratio) => sum + ratio, 0);
+  if (total <= 0) {
+    return ratios;
+  }
+
+  const powered = ratios.map((ratio) => (ratio / total) ** Math.max(0.01, exponent));
+  const poweredTotal = powered.reduce((sum, value) => sum + value, 0);
+  if (poweredTotal <= 0) {
+    return ratios;
+  }
+
+  return powered.map((value) => (value / poweredTotal) * 100);
+};
+
+const getRelativeLuminance = ({ r, g, b }: AdditiveMixResult): number =>
+  0.2126 * (r / 255) + 0.7152 * (g / 255) + 0.0722 * (b / 255);
 
 export const normalizeMixRatios = (ratios: number[]): number[] => {
   if (ratios.length === 0) {
@@ -438,4 +591,74 @@ export const mixSubtractiveColors = (
     b,
     hex: rgbToHex(r, g, b),
   };
+};
+
+export const mixAdditiveColorsTuned = (
+  colors: MixableColor[],
+  ratios: number[],
+  params: AdditiveTuningParams,
+): AdditiveMixResult | null => {
+  const weightedRatios = normalizeWeightsForExponent(ratios, params.mixExponent);
+  const baseResult = mixAdditiveColors(colors, weightedRatios, params.mode);
+  if (!baseResult) {
+    return null;
+  }
+
+  const perceptualResult =
+    params.perceptualWeight > 0 ? mixAdditiveColors(colors, weightedRatios, "perceptual-average") : null;
+  const blendedResult =
+    perceptualResult && params.mode !== "perceptual-average"
+      ? blendResults(baseResult, perceptualResult, params.perceptualWeight)
+      : baseResult;
+
+  const gammaAdjustedResult = applyGammaToResult(blendedResult, params.gamma);
+  return adjustResultByHsl(gammaAdjustedResult, params.saturationBoost, params.brightnessBias);
+};
+
+export const mixSubtractiveColorsTuned = (
+  colors: MixableColor[],
+  ratios: number[],
+  params: SubtractiveTuningParams,
+): AdditiveMixResult | null => {
+  const baseResult = mixSubtractiveColors(colors, ratios, params.mode);
+  if (!baseResult) {
+    return null;
+  }
+
+  const softenedResult =
+    params.softness > 0 && params.mode !== "soft-multiply"
+      ? mixSubtractiveColors(colors, ratios, "soft-multiply")
+      : null;
+  const cmyResult =
+    params.cmyWeight > 0 && params.mode !== "cmy-average" ? mixSubtractiveColors(colors, ratios, "cmy-average") : null;
+
+  let mixedResult = baseResult;
+  if (softenedResult) {
+    mixedResult = blendResults(mixedResult, softenedResult, params.softness);
+  }
+  if (cmyResult) {
+    mixedResult = blendResults(mixedResult, cmyResult, params.cmyWeight);
+  }
+
+  const curve = Math.max(0.2, params.darkeningCurve);
+  const curveAdjusted = {
+    r: clampChannel(clampUnit((mixedResult.r / 255) ** curve) * 255),
+    g: clampChannel(clampUnit((mixedResult.g / 255) ** curve) * 255),
+    b: clampChannel(clampUnit((mixedResult.b / 255) ** curve) * 255),
+    hex: mixedResult.hex,
+  };
+
+  const averageSourceLuminance =
+    colors.reduce((sum, color, index) => {
+      const rgb = hexToRgb(color.hex);
+      if (!rgb) {
+        return sum;
+      }
+      const weight = (ratios[index] ?? 0) / Math.max(1, ratios.reduce((ratioSum, ratio) => ratioSum + ratio, 0));
+      return sum + getRelativeLuminance(rgb) * weight;
+    }, 0) || getRelativeLuminance(curveAdjusted);
+  const darknessFactor = clampUnit((1 - averageSourceLuminance) * params.blackInfluence);
+  const darkenedResult = blendResults(curveAdjusted, { r: 0, g: 0, b: 0, hex: "#000000" }, darknessFactor);
+
+  return adjustResultByHsl(darkenedResult, params.chromaRetention, 0);
 };

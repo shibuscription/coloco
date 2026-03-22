@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   clampMixRatiosAroundBoundary,
+  DEFAULT_ADDITIVE_TUNING_PARAMS,
+  DEFAULT_SUBTRACTIVE_TUNING_PARAMS,
   getEqualMixRatios,
+  hexToRgb,
   MIN_MIX_RATIO,
-  mixAdditiveColors,
-  mixSubtractiveColors,
+  mixAdditiveColorsTuned,
+  mixSubtractiveColorsTuned,
   updateMixRatioWithSinglePartner,
-  type AdditiveMixMode,
-  type SubtractiveMixMode,
 } from "../utils/colorMixing";
 import { findNearestPccsEntryByRgb, type PccsLabEntry } from "../utils/imageClassification";
 
@@ -41,14 +42,9 @@ type RatioPressState = {
   delta: number;
 };
 
-type MixingResultCardProps = {
-  title: string;
-  description: string;
+type MixingResultPanelProps = {
+  kind: string;
   hex: string;
-  r: number;
-  g: number;
-  b: number;
-  ariaLabelPrefix: string;
   nearestPccs: PccsLabEntry | null;
 };
 
@@ -58,17 +54,6 @@ const PIE_CENTER = PIE_SIZE / 2;
 const HANDLE_HIT_WIDTH = 24;
 const RATIO_REPEAT_DELAY_MS = 350;
 const RATIO_REPEAT_INTERVAL_MS = 90;
-const additiveModeOptions: Array<{ value: AdditiveMixMode; label: string }> = [
-  { value: "linear-rgb", label: "線形RGB" },
-  { value: "srgb-average", label: "RGB平均" },
-  { value: "perceptual-average", label: "知覚平均" },
-];
-
-const subtractiveModeOptions: Array<{ value: SubtractiveMixMode; label: string }> = [
-  { value: "multiply", label: "乗算系" },
-  { value: "soft-multiply", label: "やわらかめ" },
-  { value: "cmy-average", label: "CMY平均" },
-];
 
 function BackIcon() {
   return (
@@ -82,82 +67,6 @@ function BackIcon() {
         strokeLinejoin="round"
       />
     </svg>
-  );
-}
-
-function ChevronIcon({ isOpen }: { isOpen: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={`mixing-accordion-icon ${isOpen ? "is-open" : ""}`}
-    >
-      <path
-        d="M7 10l5 5 5-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function MixingResultCard({
-  title,
-  description,
-  hex,
-  r,
-  g,
-  b,
-  ariaLabelPrefix,
-  nearestPccs,
-}: MixingResultCardProps) {
-  return (
-    <div className="mixing-result-card">
-      <div className="mixing-result-swatch" style={{ background: hex }} aria-label={`${ariaLabelPrefix} ${hex}`} />
-      <div className="mixing-result-meta">
-        <strong className="mixing-result-title">{title}</strong>
-        <p className="mixing-result-description">{description}</p>
-        <dl className="mixing-result-values">
-          <div className="mixing-result-row">
-            <dt>HEX</dt>
-            <dd>{hex}</dd>
-          </div>
-          <div className="mixing-result-row">
-            <dt>RGB</dt>
-            <dd>{`rgb(${r}, ${g}, ${b})`}</dd>
-          </div>
-        </dl>
-        {nearestPccs ? (
-          <div className="mixing-nearest-card">
-            <strong className="mixing-nearest-title">PCCS近似色</strong>
-            <div className="mixing-nearest-body">
-              <div
-                className="mixing-nearest-swatch"
-                style={{ background: nearestPccs.hex }}
-                aria-label={`PCCS近似色 ${nearestPccs.hex}`}
-              />
-              <dl className="mixing-nearest-values">
-                <div className="mixing-result-row">
-                  <dt>PCCS</dt>
-                  <dd>{nearestPccs.pccsLabel}</dd>
-                </div>
-                <div className="mixing-result-row">
-                  <dt>Label</dt>
-                  <dd>{nearestPccs.pccsShortLabel}</dd>
-                </div>
-                <div className="mixing-result-row">
-                  <dt>HEX</dt>
-                  <dd>{nearestPccs.hex}</dd>
-                </div>
-              </dl>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
   );
 }
 
@@ -201,73 +110,59 @@ const buildPieSlices = (colors: MixingColorItem[], ratios: number[]): PieSlice[]
   });
 };
 
-const getAdditiveResultTitle = (mode: AdditiveMixMode) => {
-  switch (mode) {
-    case "srgb-average":
-      return "sRGB 平均ベースの加法混色";
-    case "perceptual-average":
-      return "Lab 平均ベースの知覚寄り混色";
-    default:
-      return "線形 RGB ベースの加法混色";
+const getReadableTextColor = (hex: string) => {
+  const rgb = hexToRgb(hex);
+  if (!rgb) {
+    return "#fffaf4";
   }
+
+  const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+  return luminance > 0.58 ? "#2b251d" : "#fffaf4";
 };
 
-const getAdditiveResultDescription = (mode: AdditiveMixMode) => {
-  switch (mode) {
-    case "srgb-average":
-      return "見た目比較用として、RGB をそのまま平均した簡易モデルです。";
-    case "perceptual-average":
-      return "Lab 空間で平均してから RGB に戻した、知覚寄りの比較モデルです。";
-    default:
-      return "光の混色を意識して、線形 RGB で加重平均した基準モデルです。";
-  }
-};
+function MixingResultPanel({ kind, hex, nearestPccs }: MixingResultPanelProps) {
+  const textColor = getReadableTextColor(hex);
 
-const getSubtractiveResultTitle = (mode: SubtractiveMixMode) => {
-  switch (mode) {
-    case "multiply":
-      return "乗算ベースの減法混色";
-    case "cmy-average":
-      return "CMY 平均ベースの近似混色";
-    default:
-      return "やわらかめの減法混色";
-  }
-};
-
-const getSubtractiveResultDescription = (mode: SubtractiveMixMode) => {
-  switch (mode) {
-    case "multiply":
-      return "暗く沈みやすい基準モデルです。顔料が強く影響する見え方を比較できます。";
-    case "cmy-average":
-      return "CMY に変換して平均する、教材比較向けの簡易モデルです。";
-    default:
-      return "乗算系を少し緩めて、黒落ちしすぎにくくした比較モデルです。";
-  }
-};
+  return (
+    <section className="mixing-result-panel" style={{ background: hex, color: textColor }} aria-label={`${kind} ${hex}`}>
+      <div className="mixing-result-panel-meta">
+        <span className="mixing-result-panel-kind">{kind}</span>
+        {nearestPccs ? (
+          <>
+            <strong className="mixing-result-panel-label">{nearestPccs.pccsShortLabel}</strong>
+            <span className="mixing-result-panel-notation">{nearestPccs.pccsLabel}</span>
+          </>
+        ) : (
+          <>
+            <strong className="mixing-result-panel-label">PCCS未判定</strong>
+            <span className="mixing-result-panel-notation">-</span>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOverlayProps) {
   const isValid = colors.length >= 2 && colors.length <= 4;
   const [ratios, setRatios] = useState<number[]>(() => getEqualMixRatios(colors.length));
   const [ratioInputs, setRatioInputs] = useState<string[]>(() => getEqualMixRatios(colors.length).map(formatRatioInput));
   const [isDraggingRatio, setIsDraggingRatio] = useState(false);
-  const [additiveMode, setAdditiveMode] = useState<AdditiveMixMode>("linear-rgb");
-  const [subtractiveMode, setSubtractiveMode] = useState<SubtractiveMixMode>("soft-multiply");
-  const [isAdditiveOpen, setIsAdditiveOpen] = useState(true);
-  const [isSubtractiveOpen, setIsSubtractiveOpen] = useState(true);
   const barRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const ratioPressStateRef = useRef<RatioPressState | null>(null);
   const activeRatioPointerIdRef = useRef<number | null>(null);
   const ratioRepeatDelayRef = useRef<number | null>(null);
   const ratioRepeatIntervalRef = useRef<number | null>(null);
+
   const pieSlices = useMemo(() => buildPieSlices(colors, ratios), [colors, ratios]);
   const additiveMix = useMemo(
-    () => mixAdditiveColors(colors, ratios, additiveMode),
-    [additiveMode, colors, ratios],
+    () => mixAdditiveColorsTuned(colors, ratios, DEFAULT_ADDITIVE_TUNING_PARAMS),
+    [colors, ratios],
   );
   const subtractiveMix = useMemo(
-    () => mixSubtractiveColors(colors, ratios, subtractiveMode),
-    [colors, ratios, subtractiveMode],
+    () => mixSubtractiveColorsTuned(colors, ratios, DEFAULT_SUBTRACTIVE_TUNING_PARAMS),
+    [colors, ratios],
   );
   const additiveNearestPccs = useMemo(
     () => (additiveMix ? findNearestPccsEntryByRgb(additiveMix, palette) : null),
@@ -338,17 +233,36 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
     };
   }, []);
 
+  const stopRatioStepRepeat = (pointerId?: number) => {
+    if (pointerId !== undefined && activeRatioPointerIdRef.current !== pointerId) {
+      return;
+    }
+
+    if (ratioRepeatDelayRef.current !== null) {
+      window.clearTimeout(ratioRepeatDelayRef.current);
+      ratioRepeatDelayRef.current = null;
+    }
+
+    if (ratioRepeatIntervalRef.current !== null) {
+      window.clearInterval(ratioRepeatIntervalRef.current);
+      ratioRepeatIntervalRef.current = null;
+    }
+
+    ratioPressStateRef.current = null;
+    activeRatioPointerIdRef.current = null;
+  };
+
   useEffect(() => {
     const handleGlobalPointerUp = (event: PointerEvent) => {
-      stopRatioStepRepeat(event.pointerId, event.type);
+      stopRatioStepRepeat(event.pointerId);
     };
 
     const handleGlobalMouseUp = () => {
-      stopRatioStepRepeat(undefined, "mouseup");
+      stopRatioStepRepeat();
     };
 
     const handleGlobalTouchEnd = () => {
-      stopRatioStepRepeat(undefined, "touchend");
+      stopRatioStepRepeat();
     };
 
     window.addEventListener("pointerup", handleGlobalPointerUp);
@@ -363,15 +277,7 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
       window.removeEventListener("mouseup", handleGlobalMouseUp);
       window.removeEventListener("touchend", handleGlobalTouchEnd);
       window.removeEventListener("touchcancel", handleGlobalTouchEnd);
-
-      if (ratioRepeatDelayRef.current !== null) {
-        window.clearTimeout(ratioRepeatDelayRef.current);
-      }
-      if (ratioRepeatIntervalRef.current !== null) {
-        window.clearInterval(ratioRepeatIntervalRef.current);
-      }
-      ratioPressStateRef.current = null;
-      activeRatioPointerIdRef.current = null;
+      stopRatioStepRepeat();
     };
   }, []);
 
@@ -411,25 +317,6 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
     });
   };
 
-  const stopRatioStepRepeat = (pointerId?: number, _reason = "unknown") => {
-    if (pointerId !== undefined && activeRatioPointerIdRef.current !== pointerId) {
-      return;
-    }
-
-    if (ratioRepeatDelayRef.current !== null) {
-      window.clearTimeout(ratioRepeatDelayRef.current);
-      ratioRepeatDelayRef.current = null;
-    }
-
-    if (ratioRepeatIntervalRef.current !== null) {
-      window.clearInterval(ratioRepeatIntervalRef.current);
-      ratioRepeatIntervalRef.current = null;
-    }
-
-    ratioPressStateRef.current = null;
-    activeRatioPointerIdRef.current = null;
-  };
-
   const startRatioStepRepeat = (index: number, delta: number, event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -437,7 +324,7 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
     const pointerId = event.pointerId;
     const target = event.currentTarget;
 
-    stopRatioStepRepeat(undefined, "restart");
+    stopRatioStepRepeat();
 
     try {
       target.setPointerCapture(pointerId);
@@ -463,7 +350,7 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
       ratioRepeatIntervalRef.current = window.setInterval(() => {
         const activePressState = ratioPressStateRef.current;
         if (!activePressState || activePressState.pointerId !== pointerId) {
-          stopRatioStepRepeat(pointerId, "interval-guard-stop");
+          stopRatioStepRepeat(pointerId);
           return;
         }
 
@@ -543,7 +430,6 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
           {isValid ? (
             <>
               <section className="mixing-overlay-section">
-                <h3 className="mixing-overlay-section-title">比率編集</h3>
                 <div className="mixing-ratio-editor">
                   <div
                     ref={barRef}
@@ -574,13 +460,11 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
                       </button>
                     ))}
                   </div>
-                  <p className="mixing-ratio-hint">各色の割合は最低 {MIN_MIX_RATIO}% を維持します。</p>
                 </div>
               </section>
 
               <section className="mixing-overlay-section mixing-overview-grid">
                 <div className="mixing-overview-pane mixing-overview-chart">
-                  <h3 className="mixing-overlay-section-title">円グラフ</h3>
                   <div className="mixing-pie-shell">
                     <svg
                       className="mixing-pie-chart"
@@ -597,16 +481,11 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
                           strokeWidth="2"
                         />
                       ))}
-                      <circle cx={PIE_CENTER} cy={PIE_CENTER} r="34" fill="rgba(255, 252, 247, 0.84)" />
-                      <text x={PIE_CENTER} y={PIE_CENTER + 4} textAnchor="middle" className="mixing-pie-center-label">
-                        100%
-                      </text>
                     </svg>
                   </div>
                 </div>
 
                 <div className="mixing-overview-pane mixing-overview-ratios">
-                  <h3 className="mixing-overlay-section-title">現在の比率</h3>
                   <ul className="mixing-ratio-list">
                     {colors.map((color, index) => (
                       <li key={color.id} className="mixing-ratio-row">
@@ -620,9 +499,9 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
                             className="mixing-ratio-step-button"
                             aria-label={`${color.label} の割合を 1% 減らす`}
                             onPointerDown={(event) => startRatioStepRepeat(index, -1, event)}
-                            onPointerUp={(event) => stopRatioStepRepeat(event.pointerId, "pointerup")}
-                            onPointerCancel={(event) => stopRatioStepRepeat(event.pointerId, "pointercancel")}
-                            onLostPointerCapture={(event) => stopRatioStepRepeat(event.pointerId, "lostpointercapture")}
+                            onPointerUp={(event) => stopRatioStepRepeat(event.pointerId)}
+                            onPointerCancel={(event) => stopRatioStepRepeat(event.pointerId)}
+                            onLostPointerCapture={(event) => stopRatioStepRepeat(event.pointerId)}
                             onContextMenu={(event) => event.preventDefault()}
                           >
                             −
@@ -645,9 +524,9 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
                             className="mixing-ratio-step-button"
                             aria-label={`${color.label} の割合を 1% 増やす`}
                             onPointerDown={(event) => startRatioStepRepeat(index, 1, event)}
-                            onPointerUp={(event) => stopRatioStepRepeat(event.pointerId, "pointerup")}
-                            onPointerCancel={(event) => stopRatioStepRepeat(event.pointerId, "pointercancel")}
-                            onLostPointerCapture={(event) => stopRatioStepRepeat(event.pointerId, "lostpointercapture")}
+                            onPointerUp={(event) => stopRatioStepRepeat(event.pointerId)}
+                            onPointerCancel={(event) => stopRatioStepRepeat(event.pointerId)}
+                            onLostPointerCapture={(event) => stopRatioStepRepeat(event.pointerId)}
                             onContextMenu={(event) => event.preventDefault()}
                           >
                             +
@@ -660,102 +539,13 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
                 </div>
               </section>
 
-              <section className="mixing-overlay-section mixing-accordion-section">
-                <button
-                  type="button"
-                  className="mixing-accordion-toggle"
-                  aria-expanded={isAdditiveOpen}
-                  onClick={() => setIsAdditiveOpen((current) => !current)}
-                >
-                  <span className="mixing-overlay-section-title">加法混色</span>
-                  <ChevronIcon isOpen={isAdditiveOpen} />
-                </button>
+              {additiveMix ? (
+                <MixingResultPanel kind="加法混色" hex={additiveMix.hex} nearestPccs={additiveNearestPccs} />
+              ) : null}
 
-                {isAdditiveOpen ? (
-                  <div className="mixing-accordion-content">
-                    <div className="mixing-mode-switch" role="tablist" aria-label="加法混色の方式">
-                      {additiveModeOptions.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          role="tab"
-                          aria-selected={additiveMode === option.value}
-                          className={`mixing-mode-chip ${additiveMode === option.value ? "is-active" : ""}`}
-                          onClick={() => setAdditiveMode(option.value)}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {additiveMix ? (
-                      <MixingResultCard
-                        title={getAdditiveResultTitle(additiveMode)}
-                        description={getAdditiveResultDescription(additiveMode)}
-                        hex={additiveMix.hex}
-                        r={additiveMix.r}
-                        g={additiveMix.g}
-                        b={additiveMix.b}
-                        ariaLabelPrefix="加法混色の結果色"
-                        nearestPccs={additiveNearestPccs}
-                      />
-                    ) : (
-                      <div className="mixing-overlay-placeholder">
-                        <p>加法混色の結果色を表示できませんでした。</p>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-              </section>
-
-              <section className="mixing-overlay-section mixing-accordion-section">
-                <button
-                  type="button"
-                  className="mixing-accordion-toggle"
-                  aria-expanded={isSubtractiveOpen}
-                  onClick={() => setIsSubtractiveOpen((current) => !current)}
-                >
-                  <span className="mixing-overlay-section-title">減法混色</span>
-                  <ChevronIcon isOpen={isSubtractiveOpen} />
-                </button>
-
-                {isSubtractiveOpen ? (
-                  <div className="mixing-accordion-content">
-                    <div className="mixing-mode-switch" role="tablist" aria-label="減法混色の方式">
-                      {subtractiveModeOptions.map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          role="tab"
-                          aria-selected={subtractiveMode === option.value}
-                          className={`mixing-mode-chip ${subtractiveMode === option.value ? "is-active" : ""}`}
-                          onClick={() => setSubtractiveMode(option.value)}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {subtractiveMix ? (
-                      <MixingResultCard
-                        title={getSubtractiveResultTitle(subtractiveMode)}
-                        description={getSubtractiveResultDescription(subtractiveMode)}
-                        hex={subtractiveMix.hex}
-                        r={subtractiveMix.r}
-                        g={subtractiveMix.g}
-                        b={subtractiveMix.b}
-                        ariaLabelPrefix="減法混色の結果色"
-                        nearestPccs={subtractiveNearestPccs}
-                      />
-                    ) : (
-                      <div className="mixing-overlay-placeholder">
-                        <p>減法混色の結果色を表示できませんでした。</p>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-              </section>
-
+              {subtractiveMix ? (
+                <MixingResultPanel kind="減法混色" hex={subtractiveMix.hex} nearestPccs={subtractiveNearestPccs} />
+              ) : null}
             </>
           ) : (
             <section className="mixing-overlay-section mixing-overlay-placeholder">

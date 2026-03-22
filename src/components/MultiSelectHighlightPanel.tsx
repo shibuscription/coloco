@@ -213,7 +213,7 @@ export function MultiSelectHighlightPanel({
         hex: point.hex,
       }));
   }, [achromaticMap, chromaticMap, pendingTone]);
-  const canOpenMixing = selectedIds.length >= 2 && selectedIds.length <= 4;
+  const canOpenMixing = selectedIds.length >= 2;
 
   const updateDropdownPosition = () => {
     const trigger = listPickerButtonRef.current;
@@ -623,22 +623,29 @@ export function MultiSelectHighlightPanel({
                   type="button"
                   className="secondary-button secondary-button-small"
                   disabled={!canOpenMixing}
-                  title={canOpenMixing ? "選択色で混色画面を開く" : "混色は2〜4色で利用できます"}
-                  aria-label={canOpenMixing ? "混色画面を開く" : "混色は2〜4色で利用できます"}
+                  title={canOpenMixing ? "選択色で混色画面を開く" : "混色は2色以上で利用できます"}
+                  aria-label={canOpenMixing ? "混色画面を開く" : "混色は2色以上で利用できます"}
                   onClick={onOpenMixingPanel}
                 >
                   混色
                 </button>
               </div>
 
-              <button
-                type="button"
-                className="secondary-button secondary-button-small multi-select-clear-button"
-                disabled={selectedIds.length === 0}
-                onClick={onClearAll}
-              >
-                全解除
-              </button>
+              <div className="multi-select-clear-button-wrap">
+                <button
+                  type="button"
+                  className="secondary-button secondary-button-small multi-select-clear-button"
+                  disabled={selectedIds.length === 0}
+                  onClick={onClearAll}
+                >
+                  全解除
+                </button>
+                {selectedIds.length > 0 ? (
+                  <span className="multi-select-selection-badge" aria-hidden="true">
+                    {selectedIds.length}
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
 
