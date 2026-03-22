@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Spherical, Vector3 } from "three";
 import { ColocoScene } from "./components/ColocoScene";
 import { ColorInfoPanel } from "./components/ColorInfoPanel";
+import { ColorMixingOverlay } from "./components/ColorMixingOverlay";
 import { FullscreenColorCard } from "./components/FullscreenColorCard";
 import { HighlightControls } from "./components/HighlightControls";
 import { ImageAnalysisPanel } from "./components/ImageAnalysisPanel";
@@ -197,12 +198,27 @@ export default function App() {
   const [isInfoPanelEntering, setIsInfoPanelEntering] = useState(false);
   const [isInfoPanelContentVisible, setIsInfoPanelContentVisible] = useState(false);
   const [isFullscreenColorCardOpen, setIsFullscreenColorCardOpen] = useState(false);
+  const [isMixingOverlayOpen, setIsMixingOverlayOpen] = useState(false);
+  const [mixingColorIds, setMixingColorIds] = useState<string[]>([]);
 
   useEffect(() => {
     multiSelectedIdsRef.current = multiSelectedIds;
   }, [multiSelectedIds]);
 
   const selectedPoint = points.find((point) => point.id === selectedId) ?? null;
+  const mixingColors = useMemo(
+    () =>
+      mixingColorIds
+        .map((id) => points.find((point) => point.id === id) ?? null)
+        .filter((point): point is NonNullable<typeof point> => Boolean(point))
+        .map((point) => ({
+          id: point.id,
+          label: point.label,
+          hex: point.hex,
+          pccsNotation: point.pccsNotation,
+        })),
+    [mixingColorIds, points],
+  );
   const isInfoPanelVisible = Boolean(selectedPoint);
 
   useEffect(() => {
@@ -975,6 +991,8 @@ export default function App() {
     setShowLightnessGuides(false);
     setIsImageModalOpen(false);
     setIsMultiSelectOpen(false);
+    setIsMixingOverlayOpen(false);
+    setMixingColorIds([]);
     setIsSettingsOpen(false);
     setActiveOverlay(null);
     setIsResetDialogOpen(false);
@@ -1042,6 +1060,22 @@ export default function App() {
       : [...currentIds, pccsId];
 
     applyMultiSelectHighlight(nextIds);
+  };
+
+  const handleOpenMixingOverlay = () => {
+    const nextIds = multiSelectedIdsRef.current;
+    if (nextIds.length < 2 || nextIds.length > 4) {
+      return;
+    }
+
+    setMixingColorIds(nextIds);
+    setIsMixingOverlayOpen(true);
+    setActiveOverlay("multi");
+  };
+
+  const handleCloseMixingOverlay = () => {
+    setIsMixingOverlayOpen(false);
+    setActiveOverlay(isMultiSelectOpen ? "multi" : isSettingsOpen ? "settings" : isImageModalOpen ? "image" : null);
   };
 
   return (
@@ -1422,9 +1456,14 @@ export default function App() {
                     setActiveOverlay("multi");
                     applyMultiSelectHighlight([]);
                   }}
+                  onOpenMixingPanel={handleOpenMixingOverlay}
                 />
               </div>
             </>
+          ) : null}
+
+          {isMixingOverlayOpen ? (
+            <ColorMixingOverlay colors={mixingColors} palette={pccsLabPalette} onClose={handleCloseMixingOverlay} />
           ) : null}
 
           {isResetDialogOpen ? (

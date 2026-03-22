@@ -9,6 +9,7 @@ type MultiSelectHighlightPanelProps = {
   onToggleTile: (id: string) => void;
   onSetTilesSelected: (ids: string[], selected: boolean) => void;
   onClearAll: () => void;
+  onOpenMixingPanel: () => void;
   onFocusPanel: () => void;
 };
 
@@ -153,6 +154,7 @@ export function MultiSelectHighlightPanel({
   onToggleTile,
   onSetTilesSelected,
   onClearAll,
+  onOpenMixingPanel,
   onFocusPanel,
 }: MultiSelectHighlightPanelProps) {
   const listPickerRef = useRef<HTMLDivElement>(null);
@@ -211,6 +213,7 @@ export function MultiSelectHighlightPanel({
         hex: point.hex,
       }));
   }, [achromaticMap, chromaticMap, pendingTone]);
+  const canOpenMixing = selectedIds.length >= 2 && selectedIds.length <= 4;
 
   const updateDropdownPosition = () => {
     const trigger = listPickerButtonRef.current;
@@ -603,8 +606,9 @@ export function MultiSelectHighlightPanel({
       <div className="multi-select-card" onPointerDown={onFocusPanel}>
         <div className="multi-select-body">
           <div className="multi-select-header">
-            <div ref={listPickerRef} className="multi-select-header-actions">
-              <div className="multi-select-list-picker">
+            <div className="multi-select-header-actions">
+              <div ref={listPickerRef} className="multi-select-header-actions-left">
+                <div className="multi-select-list-picker">
                 <button
                   ref={listPickerButtonRef}
                   type="button"
@@ -613,11 +617,23 @@ export function MultiSelectHighlightPanel({
                 >
                   リストから選択
                 </button>
+                </div>
+
+                <button
+                  type="button"
+                  className="secondary-button secondary-button-small"
+                  disabled={!canOpenMixing}
+                  title={canOpenMixing ? "選択色で混色画面を開く" : "混色は2〜4色で利用できます"}
+                  aria-label={canOpenMixing ? "混色画面を開く" : "混色は2〜4色で利用できます"}
+                  onClick={onOpenMixingPanel}
+                >
+                  混色
+                </button>
               </div>
 
               <button
                 type="button"
-                className="secondary-button secondary-button-small"
+                className="secondary-button secondary-button-small multi-select-clear-button"
                 disabled={selectedIds.length === 0}
                 onClick={onClearAll}
               >

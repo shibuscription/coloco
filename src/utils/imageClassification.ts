@@ -184,6 +184,19 @@ const findNearestPccsIndex = (
   return nearestIndex;
 };
 
+export const findNearestPccsEntryByRgb = (
+  rgb: RgbColor,
+  palette: PccsLabEntry[],
+  cache: Map<number, number> = new Map<number, number>(),
+): PccsLabEntry | null => {
+  if (palette.length === 0) {
+    return null;
+  }
+
+  const nearestIndex = findNearestPccsIndex(rgb, palette, cache);
+  return palette[nearestIndex] ?? null;
+};
+
 export const createPccsLabPalette = (points: PccsRenderablePoint[]): PccsLabEntry[] =>
   points.map((point) => ({
     id: point.id,
