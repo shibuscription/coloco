@@ -50,7 +50,7 @@ const AUTO_SCROLL_STEP_PX = 9;
 const EVEN_HUE_INDICES = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24] as const;
 const ODD_HUE_INDICES = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23] as const;
 const ALL_HUE_INDICES = Array.from({ length: 24 }, (_, index) => index + 1);
-const ACHROMATIC_ORDER: AchromaticToneCode[] = ["W", "ltGy", "mGy", "dkGy", "Bk"];
+const ACHROMATIC_ORDER: AchromaticToneCode[] = ["W", "ltGy", "Gy7.5", "mGy", "Gy5.5", "Gy4.5", "dkGy", "Gy2.5", "Bk"];
 const CHROMATIC_ROW_ORDER: Array<{
   key: string;
   toneCode: ChromaticToneCode;
@@ -123,7 +123,7 @@ const buildTileRows = (): TileRow[] => {
       .filter((point): point is NonNullable<typeof point> => Boolean(point))
       .map((point) => ({
         id: point.id,
-        label: point.toneCode,
+        label: point.shortLabel,
         hex: point.hex,
       })),
   };
@@ -197,7 +197,7 @@ export function MultiSelectHighlightPanel({
         .filter((point): point is NonNullable<typeof point> => Boolean(point))
         .map((point) => ({
           id: point.id,
-          label: point.toneCode,
+          label: point.shortLabel,
           hex: point.hex,
         }));
     }

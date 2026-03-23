@@ -3,7 +3,7 @@ import type { PccsRenderablePoint } from "./pccs3d";
 export type SwipeDirection = "left" | "right" | "up" | "down";
 
 const chromaticToneOrder = ["v", "b", "s", "dp", "lt", "sf", "d", "dk", "p", "ltg", "g", "dkg"] as const;
-const achromaticToneOrder = ["W", "ltGy", "mGy", "dkGy", "Bk"] as const;
+const achromaticToneOrder = ["W", "ltGy", "Gy7.5", "mGy", "Gy5.5", "Gy4.5", "dkGy", "Gy2.5", "Bk"] as const;
 
 const isChromaticPoint = (
   point: PccsRenderablePoint,

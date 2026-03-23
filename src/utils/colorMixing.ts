@@ -281,6 +281,30 @@ export const getEqualMixRatios = (count: number): number[] => {
   return normalizeMixRatios(Array.from({ length: count }, () => baseRatio));
 };
 
+export const removeMixRatioAtIndex = (
+  ratios: number[],
+  index: number,
+  minimumRatio = MIN_MIX_RATIO,
+): number[] => {
+  if (index < 0 || index >= ratios.length || ratios.length <= 2) {
+    return ratios;
+  }
+
+  const remaining = ratios.filter((_, currentIndex) => currentIndex !== index);
+  const remainingTotal = remaining.reduce((sum, ratio) => sum + Math.max(0, ratio), 0);
+
+  if (remaining.length < 2 || remaining.length > 4) {
+    return remaining;
+  }
+
+  if (remainingTotal <= 0) {
+    return getEqualMixRatios(remaining.length);
+  }
+
+  const scaled = remaining.map((ratio) => (ratio / remainingTotal) * 100);
+  return normalizeWithMinimum(scaled, 100, minimumRatio);
+};
+
 export const clampMixRatiosAroundBoundary = (
   ratios: number[],
   boundaryIndex: number,

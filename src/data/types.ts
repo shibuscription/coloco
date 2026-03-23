@@ -53,12 +53,22 @@ export type ChromaticPccsPoint = {
   cmyk: CmykColor;
 };
 
-export type AchromaticToneCode = "W" | "ltGy" | "mGy" | "dkGy" | "Bk";
+export type AchromaticToneCode =
+  | "W"
+  | "ltGy"
+  | "Gy7.5"
+  | "mGy"
+  | "Gy5.5"
+  | "Gy4.5"
+  | "dkGy"
+  | "Gy2.5"
+  | "Bk";
 
 export type AchromaticPccsPoint = {
   id: string;
   kind: "achromatic";
   toneCode: AchromaticToneCode;
+  shortLabel: string;
   toneNameJa: string;
   pccsNotation?: string;
   pccsLightness: number;

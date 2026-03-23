@@ -126,6 +126,22 @@ export function ColorInfoPanel({
     onSwipeNavigate(direction);
   };
 
+  const handleWheel = (event: React.WheelEvent<HTMLElement>) => {
+    if (event.deltaY === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.shiftKey) {
+      onSwipeNavigate(event.deltaY < 0 ? "left" : "right");
+      return;
+    }
+
+    onSwipeNavigate(event.deltaY < 0 ? "up" : "down");
+  };
+
   const showDetails = !isMobileView || isMobileExpanded;
   const rgbText = `${selectedPoint.rgb.r}, ${selectedPoint.rgb.g}, ${selectedPoint.rgb.b}`;
   const cmykText = `${selectedPoint.cmyk.c}, ${selectedPoint.cmyk.m}, ${selectedPoint.cmyk.y}, ${selectedPoint.cmyk.k}`;
@@ -173,6 +189,7 @@ export function ColorInfoPanel({
       tabIndex={0}
       aria-label="色情報パネル"
       onKeyDown={handleKeyDown}
+      onWheel={handleWheel}
       onPointerDown={(event) => {
         onFocusPanel?.();
         event.currentTarget.focus();

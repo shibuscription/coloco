@@ -34,7 +34,7 @@ export const getPccsPosition = (point: ChromaticPccsPoint | AchromaticPccsPoint)
 
 export const getPointLabel = (point: ChromaticPccsPoint | AchromaticPccsPoint): string => {
   if (point.kind === "achromatic") {
-    return point.toneCode;
+    return point.shortLabel;
   }
 
   return `${point.toneCode}${point.hueIndex24}`;

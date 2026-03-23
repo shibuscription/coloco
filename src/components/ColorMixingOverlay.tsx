@@ -7,6 +7,7 @@ import {
   hexToRgb,
   MIN_MIX_RATIO,
   mixAdditiveColorsTuned,
+  removeMixRatioAtIndex,
   mixSubtractiveColorsTuned,
   updateMixRatioWithSinglePartner,
 } from "../utils/colorMixing";
@@ -144,7 +145,7 @@ function MixingResultPanel({ kind, hex, nearestPccs }: MixingResultPanelProps) {
 }
 
 export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOverlayProps) {
-  const isValid = colors.length >= 2 && colors.length <= 4;
+  const [activeColors, setActiveColors] = useState<MixingColorItem[]>(() => colors);
   const [ratios, setRatios] = useState<number[]>(() => getEqualMixRatios(colors.length));
   const [ratioInputs, setRatioInputs] = useState<string[]>(() => getEqualMixRatios(colors.length).map(formatRatioInput));
   const [isDraggingRatio, setIsDraggingRatio] = useState(false);
@@ -155,14 +156,17 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
   const ratioRepeatDelayRef = useRef<number | null>(null);
   const ratioRepeatIntervalRef = useRef<number | null>(null);
 
-  const pieSlices = useMemo(() => buildPieSlices(colors, ratios), [colors, ratios]);
+  const isValid = activeColors.length >= 2 && activeColors.length <= 4;
+  const canRemoveColors = activeColors.length >= 3;
+
+  const pieSlices = useMemo(() => buildPieSlices(activeColors, ratios), [activeColors, ratios]);
   const additiveMix = useMemo(
-    () => mixAdditiveColorsTuned(colors, ratios, DEFAULT_ADDITIVE_TUNING_PARAMS),
-    [colors, ratios],
+    () => mixAdditiveColorsTuned(activeColors, ratios, DEFAULT_ADDITIVE_TUNING_PARAMS),
+    [activeColors, ratios],
   );
   const subtractiveMix = useMemo(
-    () => mixSubtractiveColorsTuned(colors, ratios, DEFAULT_SUBTRACTIVE_TUNING_PARAMS),
-    [colors, ratios],
+    () => mixSubtractiveColorsTuned(activeColors, ratios, DEFAULT_SUBTRACTIVE_TUNING_PARAMS),
+    [activeColors, ratios],
   );
   const additiveNearestPccs = useMemo(
     () => (additiveMix ? findNearestPccsEntryByRgb(additiveMix, palette) : null),
@@ -184,6 +188,7 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
   }, [ratios]);
 
   useEffect(() => {
+    setActiveColors(colors);
     const initialRatios = getEqualMixRatios(colors.length);
     setRatios(initialRatios);
     setRatioInputs(initialRatios.map(formatRatioInput));
@@ -408,6 +413,29 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
     }
   };
 
+  const handleRatioWheel = (index: number, event: React.WheelEvent<HTMLElement>) => {
+    if (event.deltaY === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    handleRatioStep(index, event.deltaY < 0 ? 1 : -1);
+  };
+
+  const handleRemoveColor = (index: number) => {
+    if (!canRemoveColors) {
+      return;
+    }
+
+    setActiveColors((currentColors) => currentColors.filter((_, currentIndex) => currentIndex !== index));
+    setRatios((currentRatios) => {
+      const nextRatios = removeMixRatioAtIndex(currentRatios, index, MIN_MIX_RATIO);
+      setRatioInputs(nextRatios.map(formatRatioInput));
+      return nextRatios;
+    });
+  };
+
   return (
     <section className="mixing-overlay-layer" role="dialog" aria-modal="true" aria-labelledby="mixing-overlay-title">
       <div className="mixing-overlay-backdrop" onClick={onClose} />
@@ -436,7 +464,7 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
                     className={`mixing-ratio-bar ${isDraggingRatio ? "is-dragging" : ""}`}
                     aria-label="混色比率の編集バー"
                   >
-                    {colors.map((color, index) => (
+                    {activeColors.map((color, index) => (
                       <div
                         key={color.id}
                         className={`mixing-ratio-segment ${isDraggingRatio ? "is-dragging" : ""}`}
@@ -449,7 +477,7 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
 
                     {cumulativeBoundaries.map((boundary, index) => (
                       <button
-                        key={`${colors[index].id}-${colors[index + 1]?.id ?? index}`}
+                        key={`${activeColors[index].id}-${activeColors[index + 1]?.id ?? index}`}
                         type="button"
                         className={`mixing-ratio-handle ${isDraggingRatio ? "is-dragging" : ""}`}
                         style={{ left: `calc(${boundary}% - ${HANDLE_HIT_WIDTH / 2}px)` }}
@@ -487,12 +515,13 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
 
                 <div className="mixing-overview-pane mixing-overview-ratios">
                   <ul className="mixing-ratio-list">
-                    {colors.map((color, index) => (
-                      <li key={color.id} className="mixing-ratio-row">
+                    {activeColors.map((color, index) => (
+                      <li key={color.id} className="mixing-ratio-row" onWheel={(event) => handleRatioWheel(index, event)}>
                         <span className="mixing-ratio-row-label">
                           <i className="mixing-ratio-chip" style={{ background: color.hex }} aria-hidden="true" />
                           <span>{color.label}</span>
                         </span>
+                        <div className="mixing-ratio-row-actions">
                         <div className="mixing-ratio-input-wrap">
                           <button
                             type="button"
@@ -532,6 +561,17 @@ export function ColorMixingOverlay({ colors, palette, onClose }: ColorMixingOver
                             +
                           </button>
                           <span className="mixing-ratio-input-unit">%</span>
+                        </div>
+                        {canRemoveColors ? (
+                          <button
+                            type="button"
+                            className="mixing-ratio-remove-button"
+                            aria-label={`${color.label} remove`}
+                            onClick={() => handleRemoveColor(index)}
+                          >
+                            ×
+                          </button>
+                        ) : null}
                         </div>
                       </li>
                     ))}

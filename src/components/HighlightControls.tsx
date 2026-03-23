@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type WheelEvent as ReactWheelEvent } from "react";
 
 type SelectOption = {
   value: string;
@@ -178,6 +178,16 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
     }
   };
 
+  const handleDropdownWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (event.deltaY === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    moveSelection(event.deltaY > 0 ? 1 : -1);
+  };
+
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
@@ -224,7 +234,7 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
   }, [isOpen]);
 
   return (
-    <div ref={rootRef} className={`custom-dropdown ${isOpen ? "is-open" : ""}`}>
+    <div ref={rootRef} className={`custom-dropdown ${isOpen ? "is-open" : ""}`} onWheel={handleDropdownWheel}>
       <label className="custom-dropdown-label">{label}</label>
       <button
         ref={triggerRef}
@@ -268,6 +278,8 @@ function HighlightDropdown({ label, value, options, onChange }: DropdownProps) {
   );
 }
 
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
 export function HighlightControls({
   toneValue,
   hueValue,
@@ -292,6 +304,19 @@ export function HighlightControls({
   hueOptions,
 }: HighlightControlsProps) {
   const isAutoRotateActive = autoRotateMode !== "off";
+  const stepSphereScale = (direction: -1 | 1) => {
+    const delta = direction > 0 ? 0.05 : -0.05;
+    onSphereScaleChange(clamp(Number((sphereScale + delta).toFixed(2)), 0.5, 1));
+  };
+
+  const stepAutoRotateRpm = (direction: -1 | 1) => {
+    if (autoRotateMode === "off") {
+      return;
+    }
+
+    const delta = direction > 0 ? 0.5 : -0.5;
+    onAutoRotateRpmChange(clamp(Number((autoRotateRpm + delta).toFixed(1)), 0.5, 6));
+  };
   const autoRotateLabel =
     autoRotateMode === "cw"
       ? "自動回転: 右回り"
@@ -367,7 +392,18 @@ export function HighlightControls({
       </div>
 
       <div className="control-group">
-        <div className="rotation-speed-control">
+        <div
+          className="rotation-speed-control"
+          onWheel={(event) => {
+            if (event.deltaY === 0) {
+              return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            stepSphereScale(event.deltaY < 0 ? 1 : -1);
+          }}
+        >
           <div className="rotation-speed-header">
             <span className="custom-dropdown-label">球サイズ</span>
           </div>
@@ -379,12 +415,32 @@ export function HighlightControls({
             step={0.05}
             value={sphereScale}
             onChange={(event) => onSphereScaleChange(Number(event.target.value))}
+            onWheel={(event) => {
+              if (event.deltaY === 0) {
+                return;
+              }
+
+              event.preventDefault();
+              event.stopPropagation();
+              stepSphereScale(event.deltaY < 0 ? 1 : -1);
+            }}
           />
         </div>
       </div>
 
       <div className="control-group">
-        <div className="rotation-speed-control">
+        <div
+          className="rotation-speed-control"
+          onWheel={(event) => {
+            if (event.deltaY === 0 || autoRotateMode === "off") {
+              return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            stepAutoRotateRpm(event.deltaY < 0 ? 1 : -1);
+          }}
+        >
           <div className="rotation-speed-header">
             <span className="custom-dropdown-label">回転速度</span>
             <span className="rotation-speed-value">{autoRotateRpm.toFixed(1)} rpm</span>
@@ -398,6 +454,15 @@ export function HighlightControls({
             value={autoRotateRpm}
             disabled={autoRotateMode === "off"}
             onChange={(event) => onAutoRotateRpmChange(Number(event.target.value))}
+            onWheel={(event) => {
+              if (event.deltaY === 0 || autoRotateMode === "off") {
+                return;
+              }
+
+              event.preventDefault();
+              event.stopPropagation();
+              stepAutoRotateRpm(event.deltaY < 0 ? 1 : -1);
+            }}
           />
         </div>
       </div>

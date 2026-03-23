@@ -458,7 +458,7 @@ export default function App() {
     const mapped = toneOptions.map((tone) => {
       const swatchHex =
         tone.value === "achromatic"
-          ? pccsAchromatic.find((point) => point.id === "achromatic-mGy")?.hex ?? "#A1A1A1"
+          ? pccsAchromatic.find((point) => point.toneCode === "mGy")?.hex ?? "#A1A1A1"
           : pccsPoints.find((point) => point.toneCode === tone.value && point.hueCode24 === "Y")?.hex ?? "#ddd3bf";
 
       return {
